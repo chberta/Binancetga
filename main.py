@@ -90,10 +90,12 @@ def main():
             score, df_analise, detalhes = analise_tecnica.calcular_score_ativo(client, ativo)
 
             # Imprime o log detalhado
+            print(f"  - Score: {score}")
             if detalhes:
-                print(f"  - Score: {score}")
                 for key, value in detalhes.items():
                     print(f"  - {key}: {value}")
+            else:
+                print("  - Detalhes: Não foi possível calcular os indicadores (dados insuficientes).")
 
             if score > 0:
                 # Agora, verificamos se o sinal é recente
