@@ -40,6 +40,8 @@ def calcular_ut_bot(high, low, close, periodo=config.UT_BOT_PERIODO, multiplicad
 
     return trailing_stop, sinal
 
+import estrategia_chilo
+
 def calcular_score_ativo(client, symbol):
     """
     Calcula o score de um único ativo e retorna detalhes dos indicadores.
@@ -47,7 +49,8 @@ def calcular_score_ativo(client, symbol):
     """
     try:
         # 1. Obter dados históricos (klines)
-        klines = client.get_klines(symbol=symbol, interval=config.TIMEFRAME, limit=200)
+        # Aumentar o limite para garantir dados suficientes para Chilo
+        klines = client.get_klines(symbol=symbol, interval=config.TIMEFRAME, limit=300)
         if not klines:
             return 0, None, {}
 
@@ -62,11 +65,14 @@ def calcular_score_ativo(client, symbol):
         df['rsi'] = ta.momentum.rsi(df['close'], window=config.RSI_PERIODO)
         df['ut_stop'], df['ut_sinal'] = calcular_ut_bot(df['high'], df['low'], df['close'])
 
+        # 3. Rodar Estratégia Chilo
+        chilo_compra, chilo_detalhes = estrategia_chilo.getChiloStrategy(df)
+
         df.dropna(inplace=True)
         if df.empty:
             return 0, None, {}
 
-        # 3. Lógica de Score
+        # 4. Lógica de Score
         score = 0
         ultimo_registro = df.iloc[-1]
         penultimo_registro = df.iloc[-2]
@@ -86,13 +92,17 @@ def calcular_score_ativo(client, symbol):
             if penultimo_registro['ut_sinal'] == -1:
                 score += 2
 
-        # 4. Preparar detalhes para o log
+        if chilo_compra:
+            score += 2 # Adiciona pontos se a Chilo indicar compra
+
+        # 5. Preparar detalhes para o log
         detalhes = {
             'RSI': f"{ultimo_registro['rsi']:.2f}",
             'MA Curta': f"{ultimo_registro['ma_curta']:.8f}",
             'MA Longa': f"{ultimo_registro['ma_longa']:.8f}",
             'UT Signal': "Compra" if ultimo_registro['ut_sinal'] == 1 else "Venda"
         }
+        detalhes.update(chilo_detalhes) # Adiciona os detalhes da Chilo ao log
 
         return score, df, detalhes
 
