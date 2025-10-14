@@ -7,36 +7,36 @@ from ta.utils import dropna
 
 def calcular_ut_bot(high, low, close, periodo=config.UT_BOT_PERIODO, multiplicador=config.UT_BOT_ATR_MULTIPLICADOR):
     """
-    Calcula o indicador UT Bot Alerts de forma robusta, lidando com NaNs.
+    Calcula o indicador UT Bot Alerts de forma robusta e corrigida.
     """
     atr = ta.volatility.average_true_range(high, low, close, window=periodo)
     ema = ta.trend.ema_indicator(close, window=periodo)
 
-    trailing_stop = pd.Series(index=close.index, dtype=float)
-    sinal = pd.Series(index=close.index, dtype=float)
-
+    # Encontra o primeiro índice onde tanto a ema quanto o atr são válidos
     first_valid_index = ema.first_valid_index()
-    if first_valid_index is None:
-        return trailing_stop, sinal
+    if first_valid_index is None or atr.first_valid_index() is None:
+        # Retorna séries vazias se não houver dados suficientes
+        return pd.Series(index=close.index, dtype=float), pd.Series(index=close.index, dtype=float)
 
-    sinal.loc[first_valid_index] = 1.0
-    trailing_stop.loc[first_valid_index] = ema.loc[first_valid_index] - multiplicador * atr.loc[first_valid_index]
+    start_index = max(first_valid_index, atr.first_valid_index())
 
-    for i in range(close.index.get_loc(first_valid_index) + 1, len(close)):
-        prev_trailing_stop = trailing_stop.iloc[i-1]
+    trailing_stop = pd.Series(np.nan, index=close.index)
+    sinal = pd.Series(np.nan, index=close.index)
 
-        if pd.isna(prev_trailing_stop):
-            # Se o valor anterior for NaN, não podemos continuar
-            continue
+    # Inicializa o primeiro valor válido
+    sinal.loc[start_index] = 1.0
+    trailing_stop.loc[start_index] = ema.loc[start_index] - multiplicador * atr.loc[start_index]
 
-        if close.iloc[i] > prev_trailing_stop:
+    for i in range(close.index.get_loc(start_index) + 1, len(close)):
+        prev_sinal = sinal.iloc[i-1]
+        prev_stop = trailing_stop.iloc[i-1]
+
+        if close.iloc[i] > prev_stop:
             sinal.iloc[i] = 1.0
-            current_stop_value = ema.iloc[i] - multiplicador * atr.iloc[i]
-            trailing_stop.iloc[i] = max(prev_trailing_stop, current_stop_value)
+            trailing_stop.iloc[i] = max(prev_stop, ema.iloc[i] - multiplicador * atr.iloc[i])
         else:
             sinal.iloc[i] = -1.0
-            current_stop_value = ema.iloc[i] + multiplicador * atr.iloc[i]
-            trailing_stop.iloc[i] = min(prev_trailing_stop, current_stop_value)
+            trailing_stop.iloc[i] = min(prev_stop, ema.iloc[i] + multiplicador * atr.iloc[i])
 
     return trailing_stop, sinal
 
@@ -63,20 +63,10 @@ def calcular_score_ativo(client, symbol):
         df['ma_curta'] = ta.trend.sma_indicator(df['close'], window=config.MA_CURTA)
         df['ma_longa'] = ta.trend.sma_indicator(df['close'], window=config.MA_LONGA)
         df['rsi'] = ta.momentum.rsi(df['close'], window=config.RSI_PERIODO)
-        print(f"  [DEBUG] Indicadores básicos (MA, RSI) calculados.")
-
         df['ut_stop'], df['ut_sinal'] = calcular_ut_bot(df['high'], df['low'], df['close'])
-        print(f"  [DEBUG] UT Bot calculado.")
 
         # 3. Rodar Estratégia Chilo
         chilo_compra, chilo_detalhes = estrategia_chilo.getChiloStrategy(df)
-        print(f"  [DEBUG] Estratégia Chilo calculada.")
-
-        # -- LOG DE DEPURAÇÃO --
-        print("\n  --- [DEBUG] ESTADO DO DATAFRAME ANTES DE LIMPAR (dropna) ---")
-        print(f"  [DEBUG] Total de linhas: {len(df)}")
-        print(f"  [DEBUG] Linhas com valores nulos (NaN):\n{df.isnull().sum()}\n")
-        # --------------------
 
         df.dropna(inplace=True)
         if df.empty:
