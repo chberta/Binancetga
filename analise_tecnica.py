@@ -63,10 +63,20 @@ def calcular_score_ativo(client, symbol):
         df['ma_curta'] = ta.trend.sma_indicator(df['close'], window=config.MA_CURTA)
         df['ma_longa'] = ta.trend.sma_indicator(df['close'], window=config.MA_LONGA)
         df['rsi'] = ta.momentum.rsi(df['close'], window=config.RSI_PERIODO)
+        print(f"  [DEBUG] Indicadores básicos (MA, RSI) calculados.")
+
         df['ut_stop'], df['ut_sinal'] = calcular_ut_bot(df['high'], df['low'], df['close'])
+        print(f"  [DEBUG] UT Bot calculado.")
 
         # 3. Rodar Estratégia Chilo
         chilo_compra, chilo_detalhes = estrategia_chilo.getChiloStrategy(df)
+        print(f"  [DEBUG] Estratégia Chilo calculada.")
+
+        # -- LOG DE DEPURAÇÃO --
+        print("\n  --- [DEBUG] ESTADO DO DATAFRAME ANTES DE LIMPAR (dropna) ---")
+        print(f"  [DEBUG] Total de linhas: {len(df)}")
+        print(f"  [DEBUG] Linhas com valores nulos (NaN):\n{df.isnull().sum()}\n")
+        # --------------------
 
         df.dropna(inplace=True)
         if df.empty:
