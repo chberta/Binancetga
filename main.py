@@ -86,16 +86,24 @@ def main():
         print(f"\n--- Etapa de Análise e Score para os {len(ativos_filtrados)} ativos filtrados ---")
         candidatos_finais = {}
         for ativo in ativos_filtrados:
-            print(f"Analisando {ativo}...")
-            score, df_analise = analise_tecnica.calcular_score_ativo(client, ativo)
+            print(f"\nAnalisando {ativo}...")
+            score, df_analise, detalhes = analise_tecnica.calcular_score_ativo(client, ativo)
+
+            # Imprime o log detalhado
+            if detalhes:
+                print(f"  - Score: {score}")
+                for key, value in detalhes.items():
+                    print(f"  - {key}: {value}")
 
             if score > 0:
                 # Agora, verificamos se o sinal é recente
                 if analise_tecnica.verificar_sinal_recente(df_analise):
-                    print(f"  -> {ativo} tem sinal recente. Score: {score}")
+                    print(f"  -> RESULTADO: {ativo} tem sinal RECENTE. Adicionado à lista de candidatos.")
                     candidatos_finais[ativo] = score
                 else:
-                    print(f"  -> {ativo} com score {score}, mas sinal não é recente. Descartado.")
+                    print(f"  -> RESULTADO: {ativo} com score positivo, mas sinal NÃO é recente. Descartado.")
+            else:
+                print(f"  -> RESULTADO: Score baixo. Descartado.")
 
         # Ordenar os candidatos finais pelo score
         ativos_prontos_para_operar = sorted(candidatos_finais.items(), key=lambda item: item[1], reverse=True)

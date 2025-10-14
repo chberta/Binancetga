@@ -35,15 +35,17 @@ def calcular_ut_bot(high, low, close, periodo=config.UT_BOT_PERIODO, multiplicad
 
 def calcular_score_ativo(client, symbol):
     """
-    Calcula o score de um único ativo com base em indicadores técnicos.
+    Calcula o score de um único ativo e retorna detalhes dos indicadores.
+    Retorna: score (int), df (DataFrame), detalhes (dict)
     """
     try:
         # 1. Obter dados históricos (klines)
-        # Pegamos um pouco mais de dados para garantir que os indicadores sejam calculados corretamente
         klines = client.get_klines(symbol=symbol, interval=config.TIMEFRAME, limit=200)
+        if not klines:
+            return 0, None, {}
+
         df = pd.DataFrame(klines, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_av', 'trades', 'tb_base_av', 'tb_quote_av', 'ignore'])
 
-        # Converter colunas para numérico
         for col in ['open', 'high', 'low', 'close', 'volume']:
             df[col] = pd.to_numeric(df[col])
 
@@ -55,36 +57,40 @@ def calcular_score_ativo(client, symbol):
 
         df.dropna(inplace=True)
         if df.empty:
-            return 0 # Não há dados suficientes
+            return 0, None, {}
 
         # 3. Lógica de Score
         score = 0
         ultimo_registro = df.iloc[-1]
         penultimo_registro = df.iloc[-2]
 
-        # Score de Média Móvel (Cruzamento ou tendência)
         if ultimo_registro['ma_curta'] > ultimo_registro['ma_longa']:
-            score += 1 # Tendência de alta
+            score += 1
             if penultimo_registro['ma_curta'] <= penultimo_registro['ma_longa']:
-                score += 1 # Cruzamento recente para cima (Golden Cross)
+                score += 1
 
-        # Score de RSI
         if ultimo_registro['rsi'] < config.RSI_SOBREVENDA:
-            score += 2 # Sobre-vendido, forte sinal de compra
+            score += 2
         elif ultimo_registro['rsi'] < 50:
-            score += 1 # Abaixo da linha central, potencial de alta
+            score += 1
 
-        # Score do UT Bot
         if ultimo_registro['ut_sinal'] == 1:
-            score += 1 # Sinal de compra ativo
+            score += 1
             if penultimo_registro['ut_sinal'] == -1:
-                score += 2 # Novo sinal de compra
+                score += 2
 
-        return score, df
+        # 4. Preparar detalhes para o log
+        detalhes = {
+            'RSI': f"{ultimo_registro['rsi']:.2f}",
+            'MA Curta': f"{ultimo_registro['ma_curta']:.2f}",
+            'MA Longa': f"{ultimo_registro['ma_longa']:.2f}",
+            'UT Signal': "Compra" if ultimo_registro['ut_sinal'] == 1 else "Venda"
+        }
+
+        return score, df, detalhes
 
     except Exception as e:
-        # print(f"Erro ao calcular score para {symbol}: {e}")
-        return 0, None
+        return 0, None, {}
 
 def verificar_sinal_recente(df):
     """
