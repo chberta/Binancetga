@@ -26,41 +26,50 @@ def conectar_binance():
 
 def buscar_e_filtrar_ativos(client):
     """
-    Busca, filtra e ordena os ativos da Binance de acordo com a nova lógica eficiente.
+    Busca e filtra ativos usando get_exchange_info() para mais segurança e precisão.
     """
     try:
-        # 1. Buscar todos os tickers e filtrar por USDT e lista negra
-        print("Buscando e filtrando pares USDT...")
+        print("Buscando informações de todos os ativos na Binance...")
+        exchange_info = client.get_exchange_info()
+        symbols_data = exchange_info['symbols']
+
+        # 1. Filtro de Qualidade: Apenas ativos SPOT, com status TRADING e par USDT
+        print("Filtrando por ativos de qualidade (SPOT, TRADING, par USDT)...")
+        ativos_spot_usdt = []
+        for s in symbols_data:
+            if 'SPOT' in s['permissions'] and s['status'] == 'TRADING' and s['symbol'].endswith('USDT'):
+                ativos_spot_usdt.append(s['symbol'])
+
+        print(f"Encontrados {len(ativos_spot_usdt)} ativos SPOT com par USDT em negociação.")
+
+        # 2. Aplicar a Lista Negra pessoal do usuário
+        print("Aplicando a lista negra pessoal...")
+        ativos_sem_lista_negra = [s for s in ativos_spot_usdt if s not in config.LISTA_NEGRA]
+
+        # 3. Filtrar pelo Top N de Volume (usando get_ticker para dados de 24h)
+        print("Buscando dados de volume e selecionando o Top N...")
         all_tickers = client.get_ticker()
         df_tickers = pd.DataFrame(all_tickers)
+        df_tickers = df_tickers[df_tickers['symbol'].isin(ativos_sem_lista_negra)]
 
-        usdt_pairs = df_tickers[df_tickers['symbol'].str.endswith('USDT')]
-        usdt_pairs = usdt_pairs[~usdt_pairs['symbol'].isin(config.LISTA_NEGRA)]
+        df_tickers.loc[:, 'volume'] = df_tickers['volume'].astype(float)
+        top_volume_pairs = df_tickers.sort_values(by='volume', ascending=False).head(config.MAX_TOP_VOLUME)
 
-        # 2. Ordenar por volume e selecionar o Top N
-        print(f"Selecionando os {config.MAX_TOP_VOLUME} ativos com maior volume...")
-        usdt_pairs.loc[:, 'volume'] = usdt_pairs['volume'].astype(float)
-        top_volume_pairs = usdt_pairs.sort_values(by='volume', ascending=False).head(config.MAX_TOP_VOLUME)
-
-        # 3. Filtrar o Top N por tempo de listagem (mais de 52 semanas)
-        print(f"Verificando a idade dos {config.MAX_TOP_VOLUME} principais ativos...")
+        # 4. Verificar a idade do gráfico para os ativos do Top N
+        print(f"Verificando a idade do gráfico para os {len(top_volume_pairs)} principais ativos...")
         limite_antiguidade = datetime.now() - timedelta(weeks=52)
-        ativos_antigos_e_com_volume = []
+        ativos_finais = []
 
         for symbol in top_volume_pairs['symbol']:
-            # Pega o primeiro candle disponível (o mais antigo)
             klines = client.get_klines(symbol=symbol, interval=Client.KLINE_INTERVAL_1WEEK, limit=1)
             if klines:
-                timestamp_primeiro_candle = klines[0][0] / 1000  # Converte ms para s
-                data_primeiro_candle = datetime.fromtimestamp(timestamp_primeiro_candle)
-
+                data_primeiro_candle = datetime.fromtimestamp(klines[0][0] / 1000)
                 if data_primeiro_candle < limite_antiguidade:
-                    ativos_antigos_e_com_volume.append(symbol)
+                    ativos_finais.append(symbol)
 
-        print(f"Encontrados {len(ativos_antigos_e_com_volume)} ativos que atendem a todos os critérios.")
+        print(f"Encontrados {len(ativos_finais)} ativos que atendem a TODOS os critérios (Qualidade, Volume e Idade).")
 
-        # A lista já está ordenada por volume, então podemos retorná-la diretamente
-        return ativos_antigos_e_com_volume
+        return ativos_finais
 
     except Exception as e:
         print(f"Ocorreu um erro ao buscar e filtrar ativos: {e}")
