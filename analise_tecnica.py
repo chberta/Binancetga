@@ -89,8 +89,8 @@ def calcular_score_ativo(client, symbol):
         # 4. Preparar detalhes para o log
         detalhes = {
             'RSI': f"{ultimo_registro['rsi']:.2f}",
-            'MA Curta': f"{ultimo_registro['ma_curta']:.2f}",
-            'MA Longa': f"{ultimo_registro['ma_longa']:.2f}",
+            'MA Curta': f"{ultimo_registro['ma_curta']:.8f}",
+            'MA Longa': f"{ultimo_registro['ma_longa']:.8f}",
             'UT Signal': "Compra" if ultimo_registro['ut_sinal'] == 1 else "Venda"
         }
 
