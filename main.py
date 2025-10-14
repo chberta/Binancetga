@@ -26,46 +26,41 @@ def conectar_binance():
 
 def buscar_e_filtrar_ativos(client):
     """
-    Busca, filtra e ordena os ativos da Binance de acordo com os critérios.
+    Busca, filtra e ordena os ativos da Binance de acordo com a nova lógica eficiente.
     """
     try:
-        # 1. Buscar todos os tickers de 24h
-        print("Buscando todos os ativos na Binance...")
+        # 1. Buscar todos os tickers e filtrar por USDT e lista negra
+        print("Buscando e filtrando pares USDT...")
         all_tickers = client.get_ticker()
         df_tickers = pd.DataFrame(all_tickers)
 
-        # 2. Filtrar pares que terminam com USDT e não são de alavancagem/down
-        print("Filtrando pares USDT...")
         usdt_pairs = df_tickers[df_tickers['symbol'].str.endswith('USDT')]
         usdt_pairs = usdt_pairs[~usdt_pairs['symbol'].isin(config.LISTA_NEGRA)]
 
-        # 3. Filtrar por tempo de listagem (mais de 52 semanas)
-        # NOTA: Esta abordagem faz uma chamada de API por ativo e pode ser lenta.
-        # Para uma solução mais otimizada, considere criar um cache local
-        # com as datas de listagem dos ativos para evitar chamadas repetidas.
-        print("Filtrando por tempo de listagem (ativos com mais de 52 semanas)...")
-        limite_antiguidade = datetime.now() - timedelta(weeks=52)
-        ativos_antigos = []
+        # 2. Ordenar por volume e selecionar o Top N
+        print(f"Selecionando os {config.MAX_TOP_VOLUME} ativos com maior volume...")
+        usdt_pairs['volume'] = usdt_pairs['volume'].astype(float)
+        top_volume_pairs = usdt_pairs.sort_values(by='volume', ascending=False).head(config.MAX_TOP_VOLUME)
 
-        for symbol in usdt_pairs['symbol']:
+        # 3. Filtrar o Top N por tempo de listagem (mais de 52 semanas)
+        print(f"Verificando a idade dos {config.MAX_TOP_VOLUME} principais ativos...")
+        limite_antiguidade = datetime.now() - timedelta(weeks=52)
+        ativos_antigos_e_com_volume = []
+
+        for symbol in top_volume_pairs['symbol']:
             # Pega o primeiro candle disponível (o mais antigo)
-            klines = client.get_klines(symbol=symbol, interval=Client.KLINE_INTERVAL_WEEKLY, limit=1)
+            klines = client.get_klines(symbol=symbol, interval=Client.KLINE_INTERVAL_1WEEK, limit=1)
             if klines:
                 timestamp_primeiro_candle = klines[0][0] / 1000  # Converte ms para s
                 data_primeiro_candle = datetime.fromtimestamp(timestamp_primeiro_candle)
 
                 if data_primeiro_candle < limite_antiguidade:
-                    ativos_antigos.append(symbol)
+                    ativos_antigos_e_com_volume.append(symbol)
 
-        print(f"Encontrados {len(ativos_antigos)} ativos com mais de 52 semanas.")
-        usdt_pairs = usdt_pairs[usdt_pairs['symbol'].isin(ativos_antigos)]
+        print(f"Encontrados {len(ativos_antigos_e_com_volume)} ativos que atendem a todos os critérios.")
 
-        # 4. Ordenar por volume de negociação
-        print("Ordenando ativos por volume de negociação...")
-        usdt_pairs['volume'] = usdt_pairs['volume'].astype(float)
-        usdt_pairs_sorted = usdt_pairs.sort_values(by='volume', ascending=False)
-
-        return usdt_pairs_sorted['symbol'].tolist()
+        # A lista já está ordenada por volume, então podemos retorná-la diretamente
+        return ativos_antigos_e_com_volume
 
     except Exception as e:
         print(f"Ocorreu um erro ao buscar e filtrar ativos: {e}")
