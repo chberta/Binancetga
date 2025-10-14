@@ -1,0 +1,10 @@
+# Dependências do Projeto
+
+# Cliente da API da Binance
+python-binance
+
+# Análise e manipulação de dados
+pandas
+
+# Biblioteca para análise técnica
+ta
