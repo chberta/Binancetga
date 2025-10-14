@@ -7,29 +7,36 @@ from ta.utils import dropna
 
 def calcular_ut_bot(high, low, close, periodo=config.UT_BOT_PERIODO, multiplicador=config.UT_BOT_ATR_MULTIPLICADOR):
     """
-    Calcula o indicador UT Bot Alerts.
-    Retorna uma série com a linha de stop e a direção do sinal (1 para compra, -1 para venda).
+    Calcula o indicador UT Bot Alerts de forma robusta, lidando com NaNs.
     """
     atr = ta.volatility.average_true_range(high, low, close, window=periodo)
-
-    # A Média Móvel Exponencial (EMA) é comumente usada no UT Bot
     ema = ta.trend.ema_indicator(close, window=periodo)
 
     trailing_stop = pd.Series(index=close.index, dtype=float)
-    sinal = pd.Series(index=close.index, dtype=int)
+    sinal = pd.Series(index=close.index, dtype=float)
 
-    # Inicializa os primeiros valores para evitar erro no loop
-    if not close.empty:
-        trailing_stop.iloc[0] = ema.iloc[0] - multiplicador * atr.iloc[0]
-        sinal.iloc[0] = 1
+    first_valid_index = ema.first_valid_index()
+    if first_valid_index is None:
+        return trailing_stop, sinal
 
-    for i in range(1, len(close)):
-        if close[i] > trailing_stop.iloc[i-1]:
-            sinal.iloc[i] = 1 # Sinal de compra
-            trailing_stop.iloc[i] = max(trailing_stop.iloc[i-1], ema.iloc[i] - multiplicador * atr.iloc[i])
+    sinal.loc[first_valid_index] = 1.0
+    trailing_stop.loc[first_valid_index] = ema.loc[first_valid_index] - multiplicador * atr.loc[first_valid_index]
+
+    for i in range(close.index.get_loc(first_valid_index) + 1, len(close)):
+        prev_trailing_stop = trailing_stop.iloc[i-1]
+
+        if pd.isna(prev_trailing_stop):
+            # Se o valor anterior for NaN, não podemos continuar
+            continue
+
+        if close.iloc[i] > prev_trailing_stop:
+            sinal.iloc[i] = 1.0
+            current_stop_value = ema.iloc[i] - multiplicador * atr.iloc[i]
+            trailing_stop.iloc[i] = max(prev_trailing_stop, current_stop_value)
         else:
-            sinal.iloc[i] = -1 # Sinal de venda
-            trailing_stop.iloc[i] = min(trailing_stop.iloc[i-1], ema.iloc[i] + multiplicador * atr.iloc[i])
+            sinal.iloc[i] = -1.0
+            current_stop_value = ema.iloc[i] + multiplicador * atr.iloc[i]
+            trailing_stop.iloc[i] = min(prev_trailing_stop, current_stop_value)
 
     return trailing_stop, sinal
 

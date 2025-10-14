@@ -39,7 +39,7 @@ def buscar_e_filtrar_ativos(client):
 
         # 2. Ordenar por volume e selecionar o Top N
         print(f"Selecionando os {config.MAX_TOP_VOLUME} ativos com maior volume...")
-        usdt_pairs['volume'] = usdt_pairs['volume'].astype(float)
+        usdt_pairs.loc[:, 'volume'] = usdt_pairs['volume'].astype(float)
         top_volume_pairs = usdt_pairs.sort_values(by='volume', ascending=False).head(config.MAX_TOP_VOLUME)
 
         # 3. Filtrar o Top N por tempo de listagem (mais de 52 semanas)
