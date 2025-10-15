@@ -9,12 +9,15 @@ os 100 principais ativos encontrados na Binance, para fins de validação e depu
 
 import main
 import discovery
+import config
+from datetime import datetime, timedelta
+from binance.client import Client
 
 def run_test():
     """
-    Executa o teste de scan por volume.
+    Executa o teste de scan por volume com filtragem detalhada.
     """
-    print("--- Iniciando Teste de Scan por Volume ---")
+    print("--- Iniciando Teste de Scan e Filtros ---")
 
     client = main.conectar_binance()
     if not client:
@@ -22,22 +25,58 @@ def run_test():
         return
 
     try:
-        # Pega a lista de todos os símbolos negociáveis primeiro
         tradable_symbols = discovery.get_tradable_spot_symbols(client)
-
-        # Em seguida, busca o ranking de volume para esses símbolos
         top_volume_list = discovery.discover_top_by_volume(client, tradable_symbols)
 
-        if top_volume_list:
-            print("\n--- Top 100 Ativos por Volume (24h) ---")
-            for i, symbol in enumerate(top_volume_list[:100]):
-                print(f"{i+1:3d}. {symbol}")
-            print("\n--- Fim do Teste ---")
-        else:
+        if not top_volume_list:
             print("Nenhum ativo encontrado na busca por volume.")
+            return
+
+        print("\n--- Verificando Top 100 Ativos por Volume ---")
+
+        limite_antiguidade = datetime.now() - timedelta(weeks=52)
+        ativos_aprovados = []
+
+        for i, symbol in enumerate(top_volume_list[:100]):
+            print(f"\n{i+1}. Verificando {symbol}...")
+
+            # Filtro 1: Lista Negra
+            if symbol in config.LISTA_NEGRA:
+                print(f"   --> RESULTADO: DESCARTADO (Motivo: Lista Negra)")
+                continue
+            else:
+                print(f"   - Na Lista Negra? Não.")
+
+            # Filtro 2: Idade do Gráfico
+            try:
+                klines = client.get_klines(symbol=symbol, interval=Client.KLINE_INTERVAL_1WEEK, limit=1)
+                if klines:
+                    data_primeiro_candle = datetime.fromtimestamp(klines[0][0] / 1000)
+                    if data_primeiro_candle < limite_antiguidade:
+                        print(f"   - Idade do Gráfico: OK (Primeira vela em {data_primeiro_candle.date()})")
+                        print(f"   --> RESULTADO: APROVADO")
+                        ativos_aprovados.append(symbol)
+                    else:
+                        print(f"   - Idade do Gráfico: REPROVADO (Primeira vela em {data_primeiro_candle.date()})")
+                        print(f"   --> RESULTADO: DESCARTADO (Motivo: Idade do Gráfico)")
+                else:
+                    print(f"   - Idade do Gráfico: REPROVADO (Não foi possível obter o histórico)")
+                    print(f"   --> RESULTADO: DESCARTADO (Motivo: Sem Histórico)")
+            except Exception as e:
+                print(f"   - Erro ao verificar idade para {symbol}: {e}")
+                print(f"   --> RESULTADO: DESCARTADO (Motivo: Erro na API)")
+
+        print("\n" + "="*50)
+        print("--- Lista Final de Ativos Aprovados ---")
+        if ativos_aprovados:
+            for i, symbol in enumerate(ativos_aprovados):
+                print(f"{i+1:3d}. {symbol}")
+        else:
+            print("(Nenhum ativo aprovado)")
+        print("="*50)
 
     except Exception as e:
-        print(f"\nOcorreu um erro durante o teste: {e}")
+        print(f"\nOcorreu um erro geral durante o teste: {e}")
 
 if __name__ == "__main__":
     run_test()
