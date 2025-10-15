@@ -94,51 +94,73 @@ def buscar_e_filtrar_ativos(client):
         print(f"Ocorreu um erro ao buscar e filtrar ativos: {e}")
         return []
 
+import state_manager
+
 def main():
     """
     Função principal para executar o robô de trade.
     """
     print("Iniciando o robô de trade para Binance...")
+
+    trades_ativos = state_manager.ler_trades_ativos()
+    print(f"Memória: {len(trades_ativos)} trades já estão ativos: {trades_ativos}")
+
+    vagas_disponiveis = config.QUANTIDADE_CRIPTOS_OPERAR - len(trades_ativos)
+    print(f"Limite de operações: {config.QUANTIDADE_CRIPTOS_OPERAR}. Vagas disponíveis: {vagas_disponiveis}")
+
+    if vagas_disponiveis <= 0:
+        print("Capacidade máxima de trades atingida. Nenhuma nova busca será feita.")
+        # No futuro, aqui entrará a lógica de gerenciamento dos trades existentes.
+        return
+
     client = conectar_binance()
+    if not client:
+        return
 
-    if client:
-        print("\n--- Etapa de Filtragem de Ativos ---")
-        ativos_filtrados = buscar_e_filtrar_ativos(client)
+    print("\n--- Etapa de Busca por Novos Ativos ---")
+    ativos_filtrados = buscar_e_filtrar_ativos(client)
 
-        if not ativos_filtrados:
-            print("Nenhum ativo encontrado que corresponda aos critérios de filtragem. Encerrando.")
-            return
+    # Remove da análise os que já estão em operação
+    ativos_para_analise = [a for a in ativos_filtrados if a not in trades_ativos]
 
-        print(f"\n--- Etapa de Análise e Score para os {len(ativos_filtrados)} ativos filtrados ---")
-        candidatos_finais = {}
-        for ativo in ativos_filtrados:
-            print(f"\nAnalisando {ativo}...")
-            score, df_analise, detalhes = analise_tecnica.calcular_score_ativo(client, ativo)
+    if not ativos_para_analise:
+        print("Nenhum novo ativo encontrado para análise. Encerrando.")
+        return
 
-            print(f"  - Score: {score}")
-            if detalhes:
-                for key, value in detalhes.items():
-                    print(f"  - {key}: {value}")
-            else:
-                print("  - Detalhes: Não foi possível calcular os indicadores (dados insuficientes).")
+    print(f"\n--- Etapa de Análise e Score para os {len(ativos_para_analise)} novos ativos ---")
+    candidatos_finais = {}
+    for ativo in ativos_para_analise:
+        print(f"\nAnalisando {ativo}...")
+        score, df_analise, detalhes = analise_tecnica.calcular_score_ativo(client, ativo)
 
-            if score > 0:
-                if analise_tecnica.verificar_sinal_recente(df_analise):
-                    print(f"  -> RESULTADO: {ativo} tem sinal RECENTE. Adicionado à lista de candidatos.")
-                    candidatos_finais[ativo] = score
-                else:
-                    print(f"  -> RESULTADO: {ativo} com score positivo, mas sinal NÃO é recente. Descartado.")
-            else:
-                print(f"  -> RESULTADO: Score baixo. Descartado.")
-
-        ativos_prontos_para_operar = sorted(candidatos_finais.items(), key=lambda item: item[1], reverse=True)
-
-        if ativos_prontos_para_operar:
-            print(f"\n--- Top {config.QUANTIDADE_CRIPTOS_OPERAR} Ativos Prontos para Operar ---")
-            for ativo, score in ativos_prontos_para_operar[:config.QUANTIDADE_CRIPTOS_OPERAR]:
-                print(f"- {ativo} (Score: {score}) - SINAL RECENTE CONFIRMADO")
+        print(f"  - Score: {score}")
+        if detalhes:
+            for key, value in detalhes.items():
+                print(f"  - {key}: {value}")
         else:
-            print("\nNenhum ativo com score positivo e sinal recente foi encontrado.")
+            print("  - Detalhes: Não foi possível calcular os indicadores.")
+
+        if score > 0 and analise_tecnica.verificar_sinal_recente(df_analise):
+            print(f"  -> RESULTADO: {ativo} é um candidato viável!")
+            candidatos_finais[ativo] = score
+        else:
+            print(f"  -> RESULTADO: Descartado (score baixo ou sinal antigo).")
+
+    ativos_prontos_para_operar = sorted(candidatos_finais.items(), key=lambda item: item[1], reverse=True)
+
+    if not ativos_prontos_para_operar:
+        print("\nNenhum novo candidato qualificado encontrado nesta rodada.")
+        return
+
+    print(f"\n--- Abrindo {vagas_disponiveis} Novas Operações (Simulação) ---")
+    novos_trades = [a[0] for a in ativos_prontos_para_operar[:vagas_disponiveis]]
+
+    for trade in novos_trades:
+        print(f"Simulando abertura de trade para: {trade}")
+        trades_ativos.append(trade)
+
+    state_manager.escrever_trades_ativos(trades_ativos)
+    print(f"\nMemória atualizada. Trades ativos: {trades_ativos}")
 
 if __name__ == "__main__":
     main()
