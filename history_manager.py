@@ -10,6 +10,7 @@ persistente (CSV), criando um "livro contábil" para análise de performance.
 import os
 import csv
 from datetime import datetime
+from logger_setup import logger
 
 HISTORY_FILE_PATH = "data/historico_trades.csv"
 CSV_HEADER = [
@@ -47,7 +48,7 @@ def registrar_trade_concluido(trade_details: dict):
                 log_entry[header] = trade_details.get(header, 'N/A')
 
             writer.writerow(log_entry)
-            print(f"Histórico: Trade de {trade_details.get('symbol')} registrado com sucesso.")
+            logger.info(f"Histórico: Trade de {trade_details.get('symbol')} registrado com sucesso.")
 
     except (IOError, csv.Error) as e:
-        print(f"Erro ao registrar trade no histórico: {e}")
+        logger.error(f"Erro ao registrar trade no histórico: {e}")
