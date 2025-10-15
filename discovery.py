@@ -14,47 +14,44 @@ import config
 from binance.client import Client
 from logger_setup import logger
 
-def discover_top_by_volume(client: Client) -> list:
-    """
-    Descobre os principais pares por volume de negociação na Binance.
-    Usa os dados de `get_exchange_info` para garantir que são ativos SPOT.
-    """
+def get_tradable_spot_symbols(client: Client) -> set:
+    """Busca todos os símbolos SPOT que estão atualmente em negociação."""
     logger.info("Buscando informações de todos os ativos na Binance...")
     exchange_info = client.get_exchange_info()
     symbols_data = exchange_info['symbols']
 
     logger.info("Filtrando por ativos de qualidade (SPOT, TRADING, par USDT)...")
-    ativos_spot_usdt = []
-    for s in symbols_data:
-        if 'SPOT' in s.get('permissionSets', [[]])[0] and s['status'] == 'TRADING' and s['symbol'].endswith('USDT'):
-            ativos_spot_usdt.append(s['symbol'])
+    tradable_symbols = {
+        s['symbol'] for s in symbols_data
+        if 'SPOT' in s.get('permissionSets', [[]])[0]
+        and s['status'] == 'TRADING'
+        and s['symbol'].endswith('USDT')
+    }
+    logger.info(f"Encontrados {len(tradable_symbols)} ativos SPOT/USDT negociáveis.")
+    return tradable_symbols
 
+def discover_top_by_volume(client: Client, tradable_symbols: set) -> list:
+    """Descobre os principais pares por volume dentro de uma lista de negociáveis."""
     logger.info("Buscando dados de volume (ticker 24h)...")
     all_tickers = client.get_ticker()
     df_tickers = pd.DataFrame(all_tickers)
-    df_tickers = df_tickers[df_tickers['symbol'].isin(ativos_spot_usdt)]
+
+    # Filtra apenas os símbolos que são negociáveis
+    df_tickers = df_tickers[df_tickers['symbol'].isin(tradable_symbols)]
 
     df_tickers['quoteVolume'] = pd.to_numeric(df_tickers['quoteVolume'])
     top_volume_pairs = df_tickers.sort_values(by='quoteVolume', ascending=False)
 
+    logger.info(f"Rankeados {len(top_volume_pairs)} pares por volume.")
     return top_volume_pairs['symbol'].tolist()
 
 
-def discover_top_by_marketcap(client: Client) -> list:
-    """
-    Descobre os principais pares por capitalização de mercado usando a API da CoinGecko
-    e cruza com os pares existentes na Binance.
-    """
+def discover_top_by_marketcap(tradable_symbols: set) -> list:
+    """Descobre os principais pares por Market Cap e cruza com os negociáveis."""
     logger.info("Buscando ranking de Market Cap da CoinGecko...")
     try:
         url = "https://api.coingecko.com/api/v3/coins/markets"
-        params = {
-            "vs_currency": "usd",
-            "order": "market_cap_desc",
-            "per_page": 250,
-            "page": 1,
-            "sparkline": "false"
-        }
+        params = {"vs_currency": "usd", "order": "market_cap_desc", "per_page": 250, "page": 1}
         response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
         gecko_coins = response.json()
@@ -62,15 +59,11 @@ def discover_top_by_marketcap(client: Client) -> list:
         logger.error(f"Erro ao buscar dados da CoinGecko: {e}")
         return []
 
-    # Pega todos os símbolos USDT da Binance para cruzamento
-    exchange_info = client.get_exchange_info()
-    binance_usdt_symbols = {s['baseAsset'].upper(): s['symbol'] for s in exchange_info['symbols'] if s['symbol'].endswith('USDT')}
-
     ranked_symbols = []
     for coin in gecko_coins:
-        base_asset = coin['symbol'].upper()
-        if base_asset in binance_usdt_symbols:
-            ranked_symbols.append(binance_usdt_symbols[base_asset])
+        symbol = f"{coin['symbol'].upper()}USDT"
+        if symbol in tradable_symbols:
+            ranked_symbols.append(symbol)
 
     logger.info(f"Encontrados e rankeados {len(ranked_symbols)} símbolos da CoinGecko na Binance.")
     return ranked_symbols

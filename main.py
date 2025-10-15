@@ -62,20 +62,31 @@ def buscar_e_filtrar_ativos(client):
     Orquestra o processo de descoberta e filtragem v2.0.
     """
     try:
-        vol_list = discovery.discover_top_by_volume(client)[:config.TOP_N_VOLUME]
-        cap_list = discovery.discover_top_by_marketcap(client)[:config.TOP_N_MCAP]
+        # 1. Filtro Mestre: Pega todos os símbolos negociáveis
+        tradable_symbols = discovery.get_tradable_spot_symbols(client)
 
-        logger.info(f"Combinando as listas usando o modo '{config.COMBINE_MODE}'...")
-        combined_list = combine_symbol_lists(vol_list, cap_list, config.TOP_N_FINAL, config.COMBINE_MODE)
+        # 2. Descoberta Dupla baseada nos símbolos negociáveis
+        vol_list = discovery.discover_top_by_volume(client, tradable_symbols)
+        cap_list = discovery.discover_top_by_marketcap(tradable_symbols)
 
-        logger.info("Aplicando a lista negra pessoal...")
-        ativos_sem_lista_negra = [s for s in combined_list if s not in config.LISTA_NEGRA]
+        # 3. Combinação Inteligente
+        logger.info(f"Combinando as listas de Volume e Market Cap...")
+        combined_list = combine_symbol_lists(
+            vol_list[:config.TOP_N_VOLUME],
+            cap_list[:config.TOP_N_MCAP],
+            config.TOP_N_FINAL,
+            config.COMBINE_MODE
+        )
 
-        logger.info(f"Verificando a idade do gráfico para os {len(ativos_sem_lista_negra)} principais ativos...")
+        # 4. Filtro Final (Idade do Gráfico e Lista Negra)
+        logger.info(f"Aplicando filtros finais (idade, lista negra) a {len(combined_list)} candidatos...")
         limite_antiguidade = datetime.now() - timedelta(weeks=52)
         ativos_finais = []
 
-        for symbol in ativos_sem_lista_negra:
+        for symbol in combined_list:
+            if symbol in config.LISTA_NEGRA:
+                continue
+
             klines = client.get_klines(symbol=symbol, interval=Client.KLINE_INTERVAL_1WEEK, limit=1)
             if klines:
                 data_primeiro_candle = datetime.fromtimestamp(klines[0][0] / 1000)

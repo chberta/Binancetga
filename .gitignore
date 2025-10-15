@@ -19,3 +19,6 @@ venv/
 
 # Arquivos de sistema
 .DS_Store
+
+# Diretório de dados (logs, estado, etc.)
+data/

@@ -23,13 +23,9 @@ VALOR_OPERACAO_USDT = 10.0
 TIMEFRAME = '1h'
 
 # --- Parâmetros de Descoberta de Ativos v2.0 ---
-# Quantos ativos pegar da lista de top volume antes de combinar.
 TOP_N_VOLUME = 150
-# Quantos ativos pegar da lista de top market cap (CoinGecko) antes de combinar.
 TOP_N_MCAP = 150
-# Modo de combinação das listas ('blend', 'union', 'intersect').
 COMBINE_MODE = 'blend'
-# Quantos ativos analisar no final, após a combinação.
 TOP_N_FINAL = 50
 
 # --- Lista de Criptomoedas a Ignorar (Sua Lista Negra Pessoal) ---
