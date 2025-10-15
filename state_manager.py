@@ -43,8 +43,8 @@ def escrever_trades_ativos(trades: list[dict]):
     Escreve a lista de dicionários de trades ativos no arquivo JSON.
     """
     _garantir_diretorio()
-    with open(STATE_FILE_PATH, 'w') as f:
-        json.dump(trades, f, indent=4)
+    with open(STATE_FILE_PATH, 'w', encoding='utf-8') as f:
+        json.dump(trades, f, indent=4, ensure_ascii=False)
 
 def adicionar_trade(novo_trade: dict):
     """Adiciona um novo trade à lista de trades ativos."""

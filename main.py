@@ -96,6 +96,7 @@ def buscar_e_filtrar_ativos(client):
 
 import state_manager
 import position_manager
+import order_manager
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -150,9 +151,16 @@ def run_scan_and_open_trades(client, vagas_disponiveis: int):
         print("\nNenhum novo candidato qualificado encontrado nesta rodada.")
         return
 
-    print(f"\n--- Abrindo {vagas_disponiveis} Novas Operações (Simulação) ---")
-    for candidato in candidatos_ordenados[:vagas_disponiveis]:
-        print(f"Simulando abertura de trade para: {candidato['symbol']}")
+    print(f"\n--- Processando {vagas_disponiveis} vagas para novas operações ---")
+
+    for candidato in candidatos_ordenados:
+        if vagas_disponiveis <= 0:
+            print("Todas as vagas disponíveis foram preenchidas.")
+            break
+
+        print(f"\nIniciando processo de abertura de trade para {candidato['symbol']}...")
+
+        # 1. Cria o objeto de trade inicial e salva na memória
         novo_trade = {
             "symbol": candidato['symbol'], "status": "PENDING_BUY", "order_id": None,
             "entry_price": None, "quantity": None, "initial_stop_price": None,
@@ -160,7 +168,17 @@ def run_scan_and_open_trades(client, vagas_disponiveis: int):
             "entry_strategy": "Multi-Strategy", "entry_details": candidato['detalhes']
         }
         state_manager.adicionar_trade(novo_trade)
-        print(f"  -> Trade para {candidato['symbol']} adicionado à memória.")
+        print(f"  -> Trade para {candidato['symbol']} adicionado à memória com status PENDING_BUY.")
+
+        # 2. Chama o order_manager para executar a compra
+        sucesso = order_manager.abrir_novo_trade(client, novo_trade)
+
+        if sucesso:
+            print(f"Processo de abertura para {candidato['symbol']} concluído com sucesso.")
+            vagas_disponiveis -= 1
+        else:
+            print(f"Processo de abertura para {candidato['symbol']} falhou.")
+            # A lógica de remoção já está no order_manager em caso de falha
 
 def main():
     """
