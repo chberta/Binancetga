@@ -95,39 +95,40 @@ def buscar_e_filtrar_ativos(client):
         return []
 
 import state_manager
+import position_manager
+import time
+from datetime import datetime, timedelta, timezone
 
-def main():
-    """
-    Função principal para executar o robô de trade.
-    """
-    print("Iniciando o robô de trade para Binance...")
+def get_seconds_to_next_candle(timeframe_str: str) -> int:
+    """Calcula quantos segundos faltam para o fechamento da próxima vela."""
+    # Simplificação: Assume timeframe em horas (ex: '1h', '4h')
+    tf_hours = int(timeframe_str.replace('h', ''))
+    now = datetime.now(timezone.utc)
 
+    # Encontra o próximo horário de fechamento de vela
+    next_candle_time = (now + timedelta(hours=tf_hours)).replace(minute=0, second=0, microsecond=0)
+
+    # Se o horário calculado já passou, adiciona mais um período
+    if next_candle_time <= now:
+        next_candle_time += timedelta(hours=tf_hours)
+
+    time_to_wait = (next_candle_time - now).total_seconds()
+    return int(time_to_wait)
+
+def run_scan_and_open_trades(client, vagas_disponiveis: int):
+    """Executa o ciclo de scan e abre novas posições (simulado)."""
+    print("\n--- Etapa de Busca por Novos Ativos ---")
     trades_ativos = state_manager.ler_trades_ativos()
     simbolos_ativos = [trade['symbol'] for trade in trades_ativos]
-    print(f"Memória: {len(trades_ativos)} trades já estão ativos: {simbolos_ativos}")
 
-    vagas_disponiveis = config.QUANTIDADE_CRIPTOS_OPERAR - len(trades_ativos)
-    print(f"Limite de operações: {config.QUANTIDADE_CRIPTOS_OPERAR}. Vagas disponíveis: {vagas_disponiveis}")
-
-    if vagas_disponiveis <= 0:
-        print("Capacidade máxima de trades atingida. Nenhuma nova busca será feita.")
-        # No futuro, aqui entrará a lógica de gerenciamento dos trades existentes.
-        return
-
-    client = conectar_binance()
-    if not client:
-        return
-
-    print("\n--- Etapa de Busca por Novos Ativos ---")
     ativos_filtrados = buscar_e_filtrar_ativos(client)
-
     ativos_para_analise = [a for a in ativos_filtrados if a not in simbolos_ativos]
 
     if not ativos_para_analise:
-        print("Nenhum novo ativo encontrado para análise. Encerrando.")
+        print("Nenhum novo ativo encontrado para análise.")
         return
 
-    print(f"\n--- Etapa de Análise e Score para os {len(ativos_para_analise)} novos ativos ---")
+    print(f"\n--- Etapa de Análise e Score para {len(ativos_para_analise)} novos ativos ---")
     candidatos_finais = []
     for ativo in ativos_para_analise:
         print(f"\nAnalisando {ativo}...")
@@ -137,17 +138,12 @@ def main():
         if detalhes:
             for key, value in detalhes.items():
                 print(f"  - {key}: {value}")
-        else:
-            print("  - Detalhes: Não foi possível calcular os indicadores.")
 
         if score > 0 and analise_tecnica.verificar_sinal_recente(df_analise):
-            print(f"  -> RESULTADO: {ativo} é um candidato viável!")
-            # Guarda o objeto completo do candidato
             candidatos_finais.append({'symbol': ativo, 'score': score, 'detalhes': detalhes})
         else:
-            print(f"  -> RESULTADO: Descartado (score baixo ou sinal antigo).")
+            print(f"  -> RESULTADO: Descartado.")
 
-    # Ordena os candidatos pelo score
     candidatos_ordenados = sorted(candidatos_finais, key=lambda item: item['score'], reverse=True)
 
     if not candidatos_ordenados:
@@ -155,28 +151,57 @@ def main():
         return
 
     print(f"\n--- Abrindo {vagas_disponiveis} Novas Operações (Simulação) ---")
-
     for candidato in candidatos_ordenados[:vagas_disponiveis]:
         print(f"Simulando abertura de trade para: {candidato['symbol']}")
-
-        # Cria o objeto de trade que será salvo na memória
         novo_trade = {
-            "symbol": candidato['symbol'],
-            "status": "PENDING_BUY",
-            "order_id": None, # ID da ordem de compra
-            "entry_price": None,
-            "quantity": None,
-            "initial_stop_price": None, # Stop loss inicial
-            "trailing_stop_price": None, # Trailing stop que será atualizado
-            "take_profit_targets": [], # Lista de alvos de take profit
-            "entry_strategy": "Multi-Strategy",
-            "entry_details": candidato['detalhes']
+            "symbol": candidato['symbol'], "status": "PENDING_BUY", "order_id": None,
+            "entry_price": None, "quantity": None, "initial_stop_price": None,
+            "trailing_stop_price": None, "take_profit_targets": [],
+            "entry_strategy": "Multi-Strategy", "entry_details": candidato['detalhes']
         }
-
         state_manager.adicionar_trade(novo_trade)
         print(f"  -> Trade para {candidato['symbol']} adicionado à memória.")
 
-    print(f"\nMemória final: {state_manager.ler_trades_ativos()}")
+def main():
+    """
+    Função principal que executa o robô em um loop contínuo.
+    """
+    print("Iniciando o robô de trade para Binance v3.0 (Autônomo)...")
+    client = conectar_binance()
+    if not client:
+        return
+
+    while True:
+        print("\n" + "="*50)
+        print(f"Iniciando novo ciclo de verificação: {datetime.now().isoformat()}")
+        print("="*50)
+
+        # 1. Gerenciar posições abertas
+        position_manager.gerenciar_posicoes_abertas(client)
+
+        # 2. Verificar vagas e buscar novas oportunidades
+        trades_ativos = state_manager.ler_trades_ativos()
+        vagas_disponiveis = config.QUANTIDADE_CRIPTOS_OPERAR - len(trades_ativos)
+
+        print(f"\nMemória: {len(trades_ativos)} trades ativos. Vagas: {vagas_disponiveis}")
+        if vagas_disponiveis > 0:
+            run_scan_and_open_trades(client, vagas_disponiveis)
+        else:
+            print("Capacidade máxima de trades atingida. Nenhuma nova busca será feita.")
+
+        # 3. Sincronizar com a próxima vela
+        try:
+            wait_seconds = get_seconds_to_next_candle(config.TIMEFRAME)
+            # Adiciona um pequeno buffer para garantir que a vela fechou
+            wait_seconds += 5
+            print(f"\nCiclo concluído. Aguardando {wait_seconds // 60} minutos e {wait_seconds % 60} segundos para a próxima vela...")
+            time.sleep(wait_seconds)
+        except KeyboardInterrupt:
+            print("\nRobô interrompido pelo usuário. Desligando...")
+            break
+        except Exception as e:
+            print(f"Ocorreu um erro no loop principal: {e}. Aguardando 5 minutos antes de tentar novamente.")
+            time.sleep(300)
 
 if __name__ == "__main__":
     main()
