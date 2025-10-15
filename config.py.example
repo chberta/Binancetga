@@ -52,10 +52,13 @@ CHILO_HILO_TYPE = "HiLo"  # 'HiLo' ou 'HiLo Activator'
 CHILO_MA_TYPE = "SMA"     # 'SMA' ou 'EMA'
 
 # --- Parâmetros de Trade e Risco ---
-# Percentual para definir o Stop Loss a partir do preço de entrada.
-STOP_LOSS_PERCENT = 2.0
-# Percentual para definir o Take Profit a partir do preço de entrada.
-TAKE_PROFIT_PERCENT = 4.0
+# Percentual para definir o Trailing Stop inicial a partir do preço de entrada.
+TRAILING_STOP_PERCENT = 5.0 # Ex: 5.0 para 5%
+
+# Alvos de Take Profit (saídas parciais). As listas devem ter o mesmo tamanho.
+TAKE_PROFIT_PERCENT = [4.0, 8.0, 12.0] # Alvos em % de lucro
+TAKE_PROFIT_QUANT = [50, 50, 100]      # % da posição a ser vendida em cada alvo
+
 # Período de "castigo" para um ativo após uma venda (em múltiplos do timeframe).
 COOLDOWN_PERIOD = 3
 # Tempo em segundos para esperar e verificar se uma ordem foi executada.

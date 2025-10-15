@@ -162,11 +162,14 @@ def main():
         # Cria o objeto de trade que será salvo na memória
         novo_trade = {
             "symbol": candidato['symbol'],
-            "status": "ACTIVE", # No futuro: PENDING_BUY -> ACTIVE
-            "entry_price": None, # Será preenchido pelo order_manager
-            "quantity": None, # Será preenchido pelo order_manager
-            "trailing_stop_price": None, # Será calculado após a compra
-            "entry_strategy": "Multi-Strategy", # Pode ser refinado no futuro
+            "status": "PENDING_BUY",
+            "order_id": None, # ID da ordem de compra
+            "entry_price": None,
+            "quantity": None,
+            "initial_stop_price": None, # Stop loss inicial
+            "trailing_stop_price": None, # Trailing stop que será atualizado
+            "take_profit_targets": [], # Lista de alvos de take profit
+            "entry_strategy": "Multi-Strategy",
             "entry_details": candidato['detalhes']
         }
 
