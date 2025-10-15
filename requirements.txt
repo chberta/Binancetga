@@ -8,3 +8,6 @@ pandas
 
 # Biblioteca para análise técnica
 ta
+
+# Para requisições HTTP (CoinGecko)
+requests

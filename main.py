@@ -23,51 +23,70 @@ def conectar_binance():
         print(f"Ocorreu um erro ao conectar com a API da Binance: {e}")
         return None
 
+import discovery
+
+def _rank_map(lst: list) -> dict:
+    return {sym: i + 1 for i, sym in enumerate(lst)}
+
+def combine_symbol_lists(vol_list: list, cap_list: list, top_n: int, mode: str) -> list:
+    """Combina as listas de Volume e Market Cap com base no modo escolhido."""
+    r_vol, r_cap = _rank_map(vol_list), _rank_map(cap_list)
+
+    if mode == "intersect":
+        commons = [s for s in vol_list if s in r_cap]
+        commons.sort(key=lambda s: (r_vol.get(s, 0) + r_cap.get(s, 0)) / 2.0)
+        return commons[:top_n]
+
+    universe = list(dict.fromkeys(vol_list + cap_list))
+    max_penalty = len(universe) * 2
+
+    scored = []
+    for s in universe:
+        rv = r_vol.get(s, max_penalty)
+        rc = r_cap.get(s, max_penalty)
+        if mode == "union":
+            is_common = 1 if (s in r_vol and s in r_cap) else 0
+            score = (rv + rc) / 2.0
+            scored.append((-is_common, score, s)) # Prioriza comuns
+        else: # blend
+            score = rv + rc
+            scored.append((score, s))
+
+    scored.sort()
+
+    final_list = [s for *_, s in scored]
+    return final_list[:top_n]
+
 def buscar_e_filtrar_ativos(client):
     """
-    Busca e filtra ativos usando get_exchange_info() para mais segurança e precisão.
+    Orquestra o processo de descoberta e filtragem v2.0.
     """
     try:
-        print("Buscando informações de todos os ativos na Binance...")
-        exchange_info = client.get_exchange_info()
-        symbols_data = exchange_info['symbols']
+        # 1. Descoberta de Ativos
+        vol_list = discovery.discover_top_by_volume(client)[:config.TOP_N_VOLUME]
+        cap_list = discovery.discover_top_by_marketcap(client)[:config.TOP_N_MCAP]
 
-        # 1. Filtro de Qualidade: Apenas ativos SPOT, com status TRADING e par USDT
-        print("Filtrando por ativos de qualidade (SPOT, TRADING, par USDT)...")
-        ativos_spot_usdt = []
-        for s in symbols_data:
-            # CORREÇÃO FINAL: Usar 'permissionSets' que contém a lista de permissões.
-            if 'SPOT' in s['permissionSets'][0] and s['status'] == 'TRADING' and s['symbol'].endswith('USDT'):
-                ativos_spot_usdt.append(s['symbol'])
+        # 2. Combinação Inteligente
+        print(f"Combinando as listas usando o modo '{config.COMBINE_MODE}'...")
+        combined_list = combine_symbol_lists(vol_list, cap_list, config.TOP_N_FINAL, config.COMBINE_MODE)
 
-        print(f"Encontrados {len(ativos_spot_usdt)} ativos SPOT com par USDT em negociação.")
-
-        # 2. Aplicar a Lista Negra pessoal do usuário
+        # 3. Aplicar a Lista Negra pessoal do usuário
         print("Aplicando a lista negra pessoal...")
-        ativos_sem_lista_negra = [s for s in ativos_spot_usdt if s not in config.LISTA_NEGRA]
+        ativos_sem_lista_negra = [s for s in combined_list if s not in config.LISTA_NEGRA]
 
-        # 3. Filtrar pelo Top N de Volume (usando get_ticker para dados de 24h)
-        print("Buscando dados de volume e selecionando o Top N...")
-        all_tickers = client.get_ticker()
-        df_tickers = pd.DataFrame(all_tickers)
-        df_tickers = df_tickers[df_tickers['symbol'].isin(ativos_sem_lista_negra)]
-
-        df_tickers.loc[:, 'volume'] = df_tickers['volume'].astype(float)
-        top_volume_pairs = df_tickers.sort_values(by='volume', ascending=False).head(config.MAX_TOP_VOLUME)
-
-        # 4. Verificar a idade do gráfico para os ativos do Top N
-        print(f"Verificando a idade do gráfico para os {len(top_volume_pairs)} principais ativos...")
+        # 4. Verificar a idade do gráfico para a lista final
+        print(f"Verificando a idade do gráfico para os {len(ativos_sem_lista_negra)} principais ativos...")
         limite_antiguidade = datetime.now() - timedelta(weeks=52)
         ativos_finais = []
 
-        for symbol in top_volume_pairs['symbol']:
+        for symbol in ativos_sem_lista_negra:
             klines = client.get_klines(symbol=symbol, interval=Client.KLINE_INTERVAL_1WEEK, limit=1)
             if klines:
                 data_primeiro_candle = datetime.fromtimestamp(klines[0][0] / 1000)
                 if data_primeiro_candle < limite_antiguidade:
                     ativos_finais.append(symbol)
 
-        print(f"Encontrados {len(ativos_finais)} ativos que atendem a TODOS os critérios (Qualidade, Volume e Idade).")
+        print(f"Encontrados {len(ativos_finais)} ativos que atendem a TODOS os critérios.")
 
         return ativos_finais
 
