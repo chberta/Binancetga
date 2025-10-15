@@ -103,7 +103,8 @@ def main():
     print("Iniciando o robô de trade para Binance...")
 
     trades_ativos = state_manager.ler_trades_ativos()
-    print(f"Memória: {len(trades_ativos)} trades já estão ativos: {trades_ativos}")
+    simbolos_ativos = [trade['symbol'] for trade in trades_ativos]
+    print(f"Memória: {len(trades_ativos)} trades já estão ativos: {simbolos_ativos}")
 
     vagas_disponiveis = config.QUANTIDADE_CRIPTOS_OPERAR - len(trades_ativos)
     print(f"Limite de operações: {config.QUANTIDADE_CRIPTOS_OPERAR}. Vagas disponíveis: {vagas_disponiveis}")
@@ -120,15 +121,14 @@ def main():
     print("\n--- Etapa de Busca por Novos Ativos ---")
     ativos_filtrados = buscar_e_filtrar_ativos(client)
 
-    # Remove da análise os que já estão em operação
-    ativos_para_analise = [a for a in ativos_filtrados if a not in trades_ativos]
+    ativos_para_analise = [a for a in ativos_filtrados if a not in simbolos_ativos]
 
     if not ativos_para_analise:
         print("Nenhum novo ativo encontrado para análise. Encerrando.")
         return
 
     print(f"\n--- Etapa de Análise e Score para os {len(ativos_para_analise)} novos ativos ---")
-    candidatos_finais = {}
+    candidatos_finais = []
     for ativo in ativos_para_analise:
         print(f"\nAnalisando {ativo}...")
         score, df_analise, detalhes = analise_tecnica.calcular_score_ativo(client, ativo)
@@ -142,25 +142,38 @@ def main():
 
         if score > 0 and analise_tecnica.verificar_sinal_recente(df_analise):
             print(f"  -> RESULTADO: {ativo} é um candidato viável!")
-            candidatos_finais[ativo] = score
+            # Guarda o objeto completo do candidato
+            candidatos_finais.append({'symbol': ativo, 'score': score, 'detalhes': detalhes})
         else:
             print(f"  -> RESULTADO: Descartado (score baixo ou sinal antigo).")
 
-    ativos_prontos_para_operar = sorted(candidatos_finais.items(), key=lambda item: item[1], reverse=True)
+    # Ordena os candidatos pelo score
+    candidatos_ordenados = sorted(candidatos_finais, key=lambda item: item['score'], reverse=True)
 
-    if not ativos_prontos_para_operar:
+    if not candidatos_ordenados:
         print("\nNenhum novo candidato qualificado encontrado nesta rodada.")
         return
 
     print(f"\n--- Abrindo {vagas_disponiveis} Novas Operações (Simulação) ---")
-    novos_trades = [a[0] for a in ativos_prontos_para_operar[:vagas_disponiveis]]
 
-    for trade in novos_trades:
-        print(f"Simulando abertura de trade para: {trade}")
-        trades_ativos.append(trade)
+    for candidato in candidatos_ordenados[:vagas_disponiveis]:
+        print(f"Simulando abertura de trade para: {candidato['symbol']}")
 
-    state_manager.escrever_trades_ativos(trades_ativos)
-    print(f"\nMemória atualizada. Trades ativos: {trades_ativos}")
+        # Cria o objeto de trade que será salvo na memória
+        novo_trade = {
+            "symbol": candidato['symbol'],
+            "status": "ACTIVE", # No futuro: PENDING_BUY -> ACTIVE
+            "entry_price": None, # Será preenchido pelo order_manager
+            "quantity": None, # Será preenchido pelo order_manager
+            "trailing_stop_price": None, # Será calculado após a compra
+            "entry_strategy": "Multi-Strategy", # Pode ser refinado no futuro
+            "entry_details": candidato['detalhes']
+        }
+
+        state_manager.adicionar_trade(novo_trade)
+        print(f"  -> Trade para {candidato['symbol']} adicionado à memória.")
+
+    print(f"\nMemória final: {state_manager.ler_trades_ativos()}")
 
 if __name__ == "__main__":
     main()
