@@ -1,0 +1,62 @@
+# -*- coding: utf-8 -*-
+
+# Este é um arquivo de exemplo. Copie este arquivo para 'config.py'
+# e preencha com suas próprias chaves de API da Binance.
+# O arquivo 'config.py' real NÃO deve ser enviado para o Git.
+
+# --- Configurações da API da Binance ---
+API_KEY = "SUA_API_KEY_AQUI"
+API_SECRET = "SEU_API_SECRET_AQUI"
+
+# --- Parâmetros de Operação ---
+# Quantidade máxima de trades que o robô pode manter abertos simultaneamente.
+QUANTIDADE_CRIPTOS_OPERAR = 5
+# Valor em USDT a ser usado para cada nova operação.
+VALOR_OPERACAO_USDT = 10.0
+# Timeframe para análise dos gráficos (ex: '1h', '4h', '1d').
+TIMEFRAME = '1h'
+
+# --- Parâmetros de Descoberta de Ativos v2.0 ---
+# Quantos ativos pegar da lista de top volume antes de combinar.
+TOP_N_VOLUME = 150
+# Quantos ativos pegar da lista de top market cap (CoinGecko) antes de combinar.
+TOP_N_MCAP = 150
+# Modo de combinação das listas ('blend', 'union', 'intersect').
+COMBINE_MODE = 'blend'
+# Quantos ativos analisar no final, após a combinação.
+TOP_N_FINAL = 50
+
+# --- Lista de Criptomoedas a Ignorar (Sua Lista Negra Pessoal) ---
+# Adicione aqui os símbolos que você não deseja operar por razões estratégicas.
+# O robô já filtra automaticamente os tokens de alavancagem (UP/DOWN).
+LISTA_NEGRA = [
+    # "SHIBUSDT",
+    # "PEPEUSDT",
+    # "EPXUSDT",
+]
+
+# --- Parâmetros de Análise Técnica ---
+MA_CURTA = 9
+MA_LONGA = 21
+RSI_PERIODO = 14
+RSI_SOBRECOMPRA = 70
+RSI_SOBREVENDA = 30
+UT_BOT_PERIODO = 10
+UT_BOT_ATR_MULTIPLICADOR = 1.0
+MAX_CANDLES_SINAL_REcente = 3
+
+# --- Parâmetros da Estratégia Custom HiLo ---
+CHILO_LENGTH = 34
+CHILO_OFFSET = 0
+CHILO_HILO_TYPE = "HiLo"  # 'HiLo' ou 'HiLo Activator'
+CHILO_MA_TYPE = "SMA"     # 'SMA' ou 'EMA'
+
+# --- Parâmetros de Trade e Risco ---
+# Percentual para definir o Stop Loss a partir do preço de entrada.
+STOP_LOSS_PERCENT = 2.0
+# Percentual para definir o Take Profit a partir do preço de entrada.
+TAKE_PROFIT_PERCENT = 4.0
+# Período de "castigo" para um ativo após uma venda (em múltiplos do timeframe).
+COOLDOWN_PERIOD = 3
+# Tempo em segundos para esperar e verificar se uma ordem foi executada.
+ORDER_CHECK_TIMEOUT_S = 10
