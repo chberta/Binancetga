@@ -45,7 +45,6 @@ def discover_top_by_volume(client: Client, tradable_symbols: set) -> list:
     logger.info(f"Rankeados {len(top_volume_pairs)} pares por volume.")
     return top_volume_pairs['symbol'].tolist()
 
-
 def discover_top_by_marketcap(tradable_symbols: set) -> list:
     """Descobre os principais pares por Market Cap e cruza com os negociáveis."""
     logger.info("Buscando ranking de Market Cap da CoinGecko...")
