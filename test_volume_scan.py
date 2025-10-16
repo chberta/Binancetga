@@ -35,6 +35,8 @@ def run_test():
         print("\n--- Verificando Top 100 Ativos por Volume ---")
 
         limite_antiguidade = datetime.now() - timedelta(weeks=52)
+        # Converte a data de início para um timestamp em milissegundos, como exigido pela API
+        start_ts = int(datetime(2017, 1, 1).timestamp() * 1000)
         ativos_aprovados = []
 
         for i, symbol in enumerate(top_volume_list[:100]):
@@ -49,8 +51,8 @@ def run_test():
 
             # Filtro 2: Idade do Gráfico
             try:
-                # A forma correta de pegar a primeira vela é sem 'limit' e com um startTime antigo.
-                klines = client.get_klines(symbol=symbol, interval='1w', startTime="2017-01-01")
+                # Usa o timestamp em milissegundos para o parâmetro startTime
+                klines = client.get_klines(symbol=symbol, interval='1w', startTime=start_ts)
                 if klines:
                     data_primeiro_candle = datetime.fromtimestamp(klines[0][0] / 1000)
                     if data_primeiro_candle < limite_antiguidade:
