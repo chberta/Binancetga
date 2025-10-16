@@ -54,6 +54,11 @@ CHILO_HILO_TYPE = "HiLo"  # 'HiLo' ou 'HiLo Activator'
 CHILO_MA_TYPE = "SMA"     # 'SMA' ou 'EMA'
 
 # --- Parâmetros de Trade e Risco ---
+# Interruptor de segurança:
+# True = Executa ordens reais na Binance.
+# False = Executa apenas ordens de teste (create_test_order), sem usar dinheiro real.
+MODO_REAL = False
+
 # Percentual para definir o Trailing Stop inicial a partir do preço de entrada.
 TRAILING_STOP_PERCENT = 5.0 # Ex: 5.0 para 5%
 

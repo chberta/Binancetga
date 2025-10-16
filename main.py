@@ -116,9 +116,11 @@ from datetime import datetime, timedelta, timezone
 from logger_setup import logger
 
 import state_manager
+import order_manager
+import position_manager
 
 def run_scan_and_open_trades(client, vagas_disponiveis: int):
-    """Executa o ciclo de scan e abre novas posições (simulado)."""
+    """Executa o ciclo de scan e abre novas posições."""
     logger.info("--- Iniciando Etapa de Busca por Novos Ativos ---")
     trades_ativos = state_manager.ler_trades_ativos()
     simbolos_ativos = [trade['symbol'] for trade in trades_ativos]
@@ -156,22 +158,35 @@ def run_scan_and_open_trades(client, vagas_disponiveis: int):
             logger.info("Todas as vagas disponíveis foram preenchidas.")
             break
 
-        logger.info(f"Simulando abertura de trade para: {candidato['symbol']} (Score: {candidato['score']})")
-        novo_trade = {
-            "symbol": candidato['symbol'],
-            "status": "ACTIVE", # Simulação direta para ACTIVE
-            "entry_price": 1.0, # Preço simulado
-            "quantity": config.VALOR_OPERACAO_USDT / 1.0, # Qtd simulada
-            "entry_details": candidato['detalhes']
-        }
-        state_manager.adicionar_trade(novo_trade)
-        vagas_disponiveis -= 1
+        logger.info(f"Tentando abrir trade para: {candidato['symbol']} (Score: {candidato['score']})")
+
+        # 2. Executar a ordem de compra (de teste, por enquanto)
+        resultado_ordem = order_manager.place_buy_order(
+            client,
+            symbol=candidato['symbol'],
+            quote_order_qty=config.VALOR_OPERACAO_USDT
+        )
+
+        # 3. Se a ordem for bem-sucedida, adicionar ao estado
+        if resultado_ordem:
+            # Usa os dados retornados pelo order_manager para criar um registro de trade preciso.
+            novo_trade = {
+                "symbol": resultado_ordem['symbol'],
+                "status": "ACTIVE",
+                "entry_price": resultado_ordem['entry_price'],
+                "quantity": resultado_ordem['quantity'],
+                "entry_details": candidato['detalhes']
+            }
+            state_manager.adicionar_trade(novo_trade)
+            vagas_disponiveis -= 1
+        else:
+            logger.warning(f"Falha ao colocar ordem de compra para {candidato['symbol']}. Não será adicionado à memória.")
 
 def main():
     """
     Função principal que executa o robô em um loop contínuo.
     """
-    logger.info("Iniciando o robô de trade para Binance v3.0 (Autônomo)...")
+    logger.info("Iniciando o robô de trade para Binance v4.0 (Trading Integrado)...")
     client = conectar_binance()
     if not client:
         return
@@ -181,17 +196,22 @@ def main():
         logger.info(f"Iniciando novo ciclo de verificação: {datetime.now().isoformat()}")
         logger.info("="*50)
 
-        # No futuro, aqui entrará a chamada ao position_manager
+        # 1. Gerenciar posições existentes (verificar TP/SL)
+        trades_ativos = state_manager.ler_trades_ativos()
+        position_manager.check_active_positions(client, trades_ativos)
 
+        # Recarrega o estado caso o position_manager tenha fechado trades
         trades_ativos = state_manager.ler_trades_ativos()
         vagas_disponiveis = config.QUANTIDADE_CRIPTOS_OPERAR - len(trades_ativos)
 
+        # 2. Procurar por novas oportunidades se houver vagas
         logger.info(f"Memória: {len(trades_ativos)} trades ativos. Vagas: {vagas_disponiveis}")
         if vagas_disponiveis > 0:
             run_scan_and_open_trades(client, vagas_disponiveis)
         else:
             logger.info("Capacidade máxima de trades atingida. Nenhuma nova busca será feita.")
 
+        # 3. Aguardar o próximo ciclo
         try:
             # Lógica de sincronização com a próxima vela
             tf_em_minutos = int(''.join(filter(str.isdigit, config.TIMEFRAME)) or 1)

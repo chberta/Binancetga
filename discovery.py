@@ -23,9 +23,11 @@ def get_tradable_spot_symbols(client: Client) -> set:
     logger.info("Filtrando por ativos de qualidade (SPOT, TRADING, par USDT)...")
     tradable_symbols = {
         s['symbol'] for s in symbols_data
-        if 'SPOT' in s.get('permissionSets', [[]])[0]
+        # Garante que o ativo tem permissões e que 'SPOT' é uma delas.
+        if s.get('permissions') and 'SPOT' in s['permissions']
         and s['status'] == 'TRADING'
         and s['symbol'].endswith('USDT')
+        and not s.get('isSpotTradingAllowed', False) == False
     }
     logger.info(f"Encontrados {len(tradable_symbols)} ativos SPOT/USDT negociáveis.")
     return tradable_symbols
