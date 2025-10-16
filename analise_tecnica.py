@@ -112,21 +112,29 @@ def calcular_score_ativo(client, symbol):
 
 def verificar_sinal_recente(df):
     """
-    Verifica se o sinal de compra ocorreu dentro do número de candles definido em config.
+    Verifica de forma robusta se um sinal de compra (cruzamento) ocorreu
+    dentro do número de candles definido em config.MAX_CANDLES_SINAL_REcente.
     """
     if df is None or len(df) < 2:
         return False
 
-    # Analisa os últimos N candles, conforme configuração
-    ultimos_candles = df.tail(config.MAX_CANDLES_SINAL_REcente)
+    # Cria colunas 'shifted' no DataFrame completo para evitar erros de borda no slice.
+    df_copy = df.copy()
+    df_copy['ut_sinal_prev'] = df_copy['ut_sinal'].shift(1)
+    df_copy['ma_curta_prev'] = df_copy['ma_curta'].shift(1)
+    df_copy['ma_longa_prev'] = df_copy['ma_longa'].shift(1)
 
-    # Exemplo de verificação: Houve um cruzamento do UT Bot nos últimos N candles?
-    sinal_ut_bot = (ultimos_candles['ut_sinal'] == 1) & (ultimos_candles['ut_sinal'].shift(1) == -1)
+    # Analisa apenas os últimos N candles, conforme configuração.
+    ultimos_candles = df_copy.tail(config.MAX_CANDLES_SINAL_REcente)
 
-    # Exemplo 2: Houve um cruzamento de médias nos últimos N candles?
+    # Verifica se ocorreu um cruzamento do UT Bot (de -1 para 1) na janela.
+    sinal_ut_bot = (ultimos_candles['ut_sinal'] == 1) & (ultimos_candles['ut_sinal_prev'] == -1)
+
+    # Verifica se ocorreu um cruzamento de MAs (curta acima da longa) na janela.
     sinal_cruzamento_ma = (ultimos_candles['ma_curta'] > ultimos_candles['ma_longa']) & \
-                          (ultimos_candles['ma_curta'].shift(1) <= ultimos_candles['ma_longa'].shift(1))
+                          (ultimos_candles['ma_curta_prev'] <= ultimos_candles['ma_longa_prev'])
 
+    # Retorna True se qualquer um dos sinais de cruzamento for encontrado na janela.
     if sinal_ut_bot.any() or sinal_cruzamento_ma.any():
         return True
 

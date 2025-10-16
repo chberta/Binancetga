@@ -11,9 +11,3 @@ ta
 
 # Para requisições HTTP (CoinGecko)
 requests
-
-# Para requisições HTTP (CoinGecko)
-requests
-
-# Para requisições HTTP (CoinGecko)
-requests

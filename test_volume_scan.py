@@ -49,7 +49,8 @@ def run_test():
 
             # Filtro 2: Idade do Gráfico
             try:
-                klines = client.get_klines(symbol=symbol, interval=Client.KLINE_INTERVAL_1WEEK, limit=1)
+                # A forma correta de pegar a primeira vela é sem 'limit' e com um startTime antigo.
+                klines = client.get_klines(symbol=symbol, interval='1w', startTime="2017-01-01")
                 if klines:
                     data_primeiro_candle = datetime.fromtimestamp(klines[0][0] / 1000)
                     if data_primeiro_candle < limite_antiguidade:
