@@ -83,17 +83,25 @@ def getChiloStrategy(stock_data: pd.DataFrame):
         else:
             buy_state.iat[i] = buy_state.iat[i - 1]
 
-    # Checagem final para evitar erros se os dados forem insuficientes para os últimos valores
-    if hima.iat[-1] is np.nan or loma.iat[-1] is np.nan or hilo.iat[-1] is np.nan:
-        return False, {}
+    # Seta a decisão de trade final baseada no último estado.
+    # Garante que temos um valor booleano explícito.
+    chilo_trade_decision = bool(buy_state.iloc[-1]) if not buy_state.empty else False
 
-    chilo_trade_decision = bool(buy_state.iat[-1])
+    # Detalhes para log
+    detalhes = {}
+    if not df.empty:
+        # Garante que os índices existem antes de tentar acessá-los
+        last_idx = -1
+        try:
+            detalhes = {
+                'Chilo HiMA': f"{hima.iloc[last_idx]:.8f}",
+                'Chilo LoMA': f"{loma.iloc[last_idx]:.8f}",
+                'Chilo HiLo': f"{hilo.iloc[last_idx]:.8f}",
+                'Chilo Decisão': 'Comprar' if chilo_trade_decision else 'Vender'
+            }
+        except (IndexError, KeyError):
+            # Se não for possível gerar os detalhes, retorna um dicionário vazio
+             return False, {}, buy
 
-    detalhes = {
-        'Chilo HiMA': f"{hima.iat[-1]:.8f}",
-        'Chilo LoMA': f"{loma.iat[-1]:.8f}",
-        'Chilo HiLo': f"{hilo.iat[-1]:.8f}",
-        'Chilo Decisão': 'Comprar' if chilo_trade_decision else 'Vender'
-    }
-
-    return chilo_trade_decision, detalhes
+    # Retorna a decisão, os detalhes e a série de sinais de compra brutos
+    return chilo_trade_decision, detalhes, buy

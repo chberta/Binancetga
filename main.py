@@ -64,51 +64,38 @@ def combine_symbol_lists(vol_list: list, cap_list: list, top_n: int, mode: str) 
 
 def buscar_e_filtrar_ativos(client):
     """
-    Orquestra o processo de descoberta e filtragem v2.0.
+    Orquestra o processo de descoberta e filtragem de ativos conforme a nova estratégia.
+    1. Busca os 100 ativos com maior volume.
+    2. Filtra para manter apenas os que têm mais de 52 semanas.
     """
     try:
+        # Etapa 1: Obter todos os símbolos negociáveis
         tradable_symbols = discovery.get_tradable_spot_symbols(client)
+        if not tradable_symbols:
+            logger.warning("Nenhum símbolo negociável encontrado. Interrompendo a busca.")
+            return []
 
-        vol_list = discovery.discover_top_by_volume(client, tradable_symbols)
-        cap_list = discovery.discover_top_by_marketcap(tradable_symbols)
+        # Etapa 2: Descobrir os 100 principais por volume
+        top_100_volume = discovery.discover_top_by_volume(client, tradable_symbols)
+        if not top_100_volume:
+            logger.warning("Não foi possível obter a lista de ativos por volume.")
+            return []
 
-        logger.info(f"Combinando as listas de Volume e Market Cap...")
-        combined_list = combine_symbol_lists(
-            vol_list[:config.TOP_N_VOLUME],
-            cap_list[:config.TOP_N_MCAP],
-            9999, # Pega uma lista grande para filtrar depois
-            config.COMBINE_MODE
-        )
+        # Etapa 3: Filtrar por idade (mais de 52 semanas)
+        assets_antigos = discovery.filter_assets_by_age(client, top_100_volume, min_weeks_old=52)
 
-        logger.info(f"Aplicando filtros de idade e lista negra a {len(combined_list)} candidatos...")
-        limite_antiguidade = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(weeks=52)
+        # Etapa 4: (Opcional) Aplicar lista negra
+        if hasattr(config, 'LISTA_NEGRA'):
+            assets_finais = [symbol for symbol in assets_antigos if symbol not in config.LISTA_NEGRA]
+            logger.info(f"{len(assets_antigos) - len(assets_finais)} ativos foram removidos pela lista negra.")
+        else:
+            assets_finais = assets_antigos
 
-        # Converte a data de início para um timestamp em milissegundos, como exigido pela API
-        start_ts = int(datetime(2017, 1, 1).timestamp() * 1000)
-
-        ativos_filtrados = []
-        for symbol in combined_list:
-            if symbol in config.LISTA_NEGRA:
-                continue
-
-            try:
-                # Usa o timestamp em milissegundos para o parâmetro startTime
-                klines = client.get_klines(symbol=symbol, interval='1w', startTime=start_ts)
-                if klines:
-                    data_primeiro_candle = datetime.fromtimestamp(klines[0][0] / 1000)
-                    if data_primeiro_candle < limite_antiguidade:
-                        ativos_filtrados.append(symbol)
-            except Exception as e:
-                logger.warning(f"Não foi possível verificar a idade de {symbol}: {e}")
-
-
-        ativos_finais = ativos_filtrados[:config.TOP_N_FINAL]
-        logger.info(f"Encontrados {len(ativos_finais)} ativos que atendem a TODOS os critérios e foram selecionados para análise.")
-
-        return ativos_finais
+        logger.info(f"Encontrados {len(assets_finais)} ativos que atendem a TODOS os critérios e foram selecionados para análise.")
+        return assets_finais
 
     except Exception as e:
-        logger.error(f"Ocorreu um erro ao buscar e filtrar ativos: {e}", exc_info=True)
+        logger.error(f"Ocorreu um erro crítico ao buscar e filtrar ativos: {e}", exc_info=True)
         return []
 
 import time
@@ -120,67 +107,57 @@ import order_manager
 import position_manager
 
 def run_scan_and_open_trades(client, vagas_disponiveis: int):
-    """Executa o ciclo de scan e abre novas posições."""
+    """
+    Executa o ciclo de scan e abre novas posições baseado na estratégia Chilo RSI.
+    """
     logger.info("--- Iniciando Etapa de Busca por Novos Ativos ---")
+    # 1. Obter a lista de ativos já em operação para não analisá-los novamente.
     trades_ativos = state_manager.ler_trades_ativos()
     simbolos_ativos = [trade['symbol'] for trade in trades_ativos]
 
+    # 2. Buscar e filtrar a lista de potenciais ativos.
     ativos_filtrados = buscar_e_filtrar_ativos(client)
     ativos_para_analise = [a for a in ativos_filtrados if a not in simbolos_ativos]
 
     if not ativos_para_analise:
-        logger.info("Nenhum novo ativo encontrado para análise.")
+        logger.info("Nenhum novo ativo encontrado para análise (já estamos em todos ou nenhum passou no filtro).")
         return
 
-    logger.info(f"--- Iniciando Etapa de Análise e Score para {len(ativos_para_analise)} novos ativos ---")
-    candidatos_finais = []
-    for ativo in ativos_para_analise:
-        logger.info(f"Analisando {ativo}...")
-        score, df_analise, detalhes = analise_tecnica.calcular_score_ativo(client, ativo)
+    logger.info(f"--- Iniciando Análise de Sinal Chilo para {len(ativos_para_analise)} ativos ---")
 
-        log_detalhes = f"Score: {score} | Detalhes: {detalhes}"
-        logger.debug(log_detalhes)
-
-        if score > 0 and analise_tecnica.verificar_sinal_recente(df_analise):
-            candidatos_finais.append({'symbol': ativo, 'score': score, 'detalhes': detalhes})
-        else:
-            logger.info(f" -> {ativo} descartado (score baixo ou sinal antigo).")
-
-    candidatos_ordenados = sorted(candidatos_finais, key=lambda item: item['score'], reverse=True)
-
-    if not candidatos_ordenados:
-        logger.info("Nenhum novo candidato qualificado encontrado nesta rodada.")
-        return
-
-    logger.info(f"--- Processando {vagas_disponiveis} vagas para novas operações ---")
-    for candidato in candidatos_ordenados:
+    # 3. Analisa cada ativo e tenta abrir a operação se houver sinal.
+    for symbol in ativos_para_analise:
         if vagas_disponiveis <= 0:
-            logger.info("Todas as vagas disponíveis foram preenchidas.")
+            logger.info("Todas as vagas de trade foram preenchidas.")
             break
 
-        logger.info(f"Tentando abrir trade para: {candidato['symbol']} (Score: {candidato['score']})")
+        logger.info(f"Analisando {symbol}...")
 
-        # 2. Executar a ordem de compra (de teste, por enquanto)
-        resultado_ordem = order_manager.place_buy_order(
-            client,
-            symbol=candidato['symbol'],
-            quote_order_qty=config.VALOR_OPERACAO_USDT
-        )
+        # 4. Verifica se há um sinal de compra recente.
+        if analise_tecnica.verificar_sinal_chilo_recente(client, symbol):
+            logger.info(f"SINAL DE COMPRA ENCONTRADO para {symbol}. Tentando abrir trade...")
 
-        # 3. Se a ordem for bem-sucedida, adicionar ao estado
-        if resultado_ordem:
-            # Usa os dados retornados pelo order_manager para criar um registro de trade preciso.
-            novo_trade = {
-                "symbol": resultado_ordem['symbol'],
-                "status": "ACTIVE",
-                "entry_price": resultado_ordem['entry_price'],
-                "quantity": resultado_ordem['quantity'],
-                "entry_details": candidato['detalhes']
-            }
-            state_manager.adicionar_trade(novo_trade)
-            vagas_disponiveis -= 1
+            # 5. Executar a ordem de compra.
+            resultado_ordem = order_manager.place_buy_order(
+                client,
+                symbol=symbol,
+                quote_order_qty=config.VALOR_OPERACAO_USDT
+            )
+
+            # 6. Se a ordem for bem-sucedida, adicionar ao estado.
+            if resultado_ordem:
+                novo_trade = {
+                    "symbol": resultado_ordem['symbol'],
+                    "status": "ACTIVE",
+                    "entry_price": resultado_ordem['entry_price'],
+                    "quantity": resultado_ordem['quantity'],
+                }
+                state_manager.adicionar_trade(novo_trade)
+                vagas_disponiveis -= 1 # Decrementa o número de vagas.
+            else:
+                logger.warning(f"Falha ao colocar ordem de compra para {symbol}. O sinal será ignorado.")
         else:
-            logger.warning(f"Falha ao colocar ordem de compra para {candidato['symbol']}. Não será adicionado à memória.")
+            logger.info(f" -> {symbol} sem sinal de compra recente.")
 
 def main():
     """
