@@ -128,9 +128,7 @@ def place_sell_order(client, symbol: str, quantity: float):
             fills = order.get('fills', [])
             if fills:
                 avg_price = sum(float(fill['price']) * float(fill['qty']) for fill in fills) / float(order['executedQty'])
-                trades_logger.info(f"SELL,{symbol},{avg_price},{order['executedQty']}")
-            else:
-                trades_logger.info(f"SELL,{symbol},N/A,{order.get('executedQty', 'N/A')}")
+                # Opcional: pode-se retornar o avg_price se necessário no futuro
 
             return {"status": "SUCCESS", "order_id": order.get('orderId', 'N/A')}
         else:
@@ -142,8 +140,6 @@ def place_sell_order(client, symbol: str, quantity: float):
                 quantity=formatted_quantity
             )
             logger.info(f"Ordem de venda de TESTE para {symbol} foi bem-sucedida (simulação).")
-            # Em modo teste, não temos o preço de venda, então registramos 'N/A'
-            trades_logger.info(f"SELL,{symbol},N/A,{formatted_quantity}")
             return {"status": "TEST_SUCCESS"}
 
     except BinanceAPIException as e:

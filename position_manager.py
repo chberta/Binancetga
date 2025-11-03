@@ -18,9 +18,8 @@ def _handle_full_sell(client, trade: dict, reason: str, pnl: float):
     quantity = trade['quantity']
     logger.info(f"ORDEM DE VENDA TOTAL para {symbol}. Motivo: {reason}. PnL: {pnl:.2f}%.")
 
-    # O log da venda em si (com preço e quantidade) é feito no order_manager.
-    # Aqui, logamos o motivo e o PnL.
-    trades_logger.info(f"CLOSE,{symbol},{reason},{pnl:.2f}%")
+    # Log completo da venda final
+    trades_logger.info(f"CLOSE,{symbol},{reason},{pnl:.2f}%,{quantity}")
 
     if order_manager.place_sell_order(client, symbol, quantity):
         state_manager.remover_trade(symbol)
@@ -46,8 +45,8 @@ def _handle_partial_sell(client, trade: dict, pnl: float):
 
     logger.info(f"ORDEM DE VENDA PARCIAL para {symbol} (Alvo #{target_index + 1}). PnL: {pnl:.2f}%. Vendendo {quantity_to_sell} unidades.")
 
-    # Loga a razão da venda parcial
-    trades_logger.info(f"PARTIAL_SELL,{symbol},TAKE_PROFIT_TARGET_{target_index + 1},{pnl:.2f}%")
+    # Log completo da venda parcial
+    trades_logger.info(f"PARTIAL_SELL,{symbol},TAKE_PROFIT_TARGET_{target_index + 1},{pnl:.2f}%,{quantity_to_sell}")
 
     if order_manager.place_sell_order(client, symbol, quantity_to_sell):
         trade['quantity'] -= quantity_to_sell
