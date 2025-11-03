@@ -49,28 +49,6 @@ def discover_top_by_volume(client: Client, tradable_symbols: set) -> list:
     logger.info(f"Selecionados os 100 principais pares por volume.")
     return top_100_volume_pairs['symbol'].tolist()
 
-def discover_top_by_marketcap(tradable_symbols: set) -> list:
-    """Descobre os principais pares por Market Cap e cruza com os negociáveis."""
-    logger.info("Buscando ranking de Market Cap da CoinGecko...")
-    try:
-        url = "https://api.coingecko.com/api/v3/coins/markets"
-        params = {"vs_currency": "usd", "order": "market_cap_desc", "per_page": 250, "page": 1}
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        gecko_coins = response.json()
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Erro ao buscar dados da CoinGecko: {e}")
-        return []
-
-    ranked_symbols = []
-    for coin in gecko_coins:
-        symbol = f"{coin['symbol'].upper()}USDT"
-        if symbol in tradable_symbols:
-            ranked_symbols.append(symbol)
-
-    logger.info(f"Encontrados e rankeados {len(ranked_symbols)} símbolos da CoinGecko na Binance.")
-    return ranked_symbols
-
 def filter_assets_by_age(client: Client, symbols: list, min_weeks_old: int = 52) -> list:
     """
     Filtra uma lista de símbolos, mantendo apenas aqueles que existem há um

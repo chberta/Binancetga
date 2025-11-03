@@ -25,43 +25,6 @@ def conectar_binance():
 
 import discovery
 
-def _rank_map(lst: list) -> dict:
-    return {sym: i + 1 for i, sym in enumerate(lst)}
-
-def combine_symbol_lists(vol_list: list, cap_list: list, top_n: int, mode: str) -> list:
-    """Combina as listas de Volume e Market Cap com base no modo escolhido."""
-    r_vol, r_cap = _rank_map(vol_list), _rank_map(cap_list)
-
-    if mode == "intersect":
-        commons = [s for s in vol_list if s in r_cap]
-        # Ordena os comuns pela média de seus ranks
-        commons.sort(key=lambda s: (r_vol.get(s, 0) + r_cap.get(s, 0)) / 2.0)
-        return commons[:top_n]
-
-    # Para 'union' e 'blend', processamos o universo completo
-    universe = list(dict.fromkeys(vol_list + cap_list))
-    max_penalty = len(universe) * 2
-
-    scored = []
-    for s in universe:
-        rv = r_vol.get(s, max_penalty)
-        rc = r_cap.get(s, max_penalty)
-
-        if mode == "union":
-            # Para 'union', priorizamos os que estão em ambas as listas
-            is_common = 1 if (s in r_vol and s in r_cap) else 0
-            score = (rv + rc) / 2.0  # Média dos ranks
-            scored.append((-is_common, score, s))  # '-is_common' para ordenar comuns primeiro
-        else:  # 'blend'
-            # Para 'blend', simplesmente somamos os ranks
-            score = rv + rc
-            scored.append((score, s))
-
-    scored.sort()
-
-    final_list = [s for *_, s in scored]
-    return final_list[:top_n]
-
 def buscar_e_filtrar_ativos(client):
     """
     Orquestra o processo de descoberta e filtragem de ativos conforme a nova estratégia.

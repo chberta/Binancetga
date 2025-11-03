@@ -89,3 +89,44 @@ def place_buy_order(client, symbol: str, quote_order_qty: float):
     except Exception as e:
         logger.error(f"Ocorreu um erro inesperado ao colocar ordem para {symbol}: {e}", exc_info=True)
         return None
+
+def place_sell_order(client, symbol: str, quantity: float):
+    """
+    Coloca uma ordem de venda a mercado (real ou de teste).
+    """
+    try:
+        mode = "REAL" if config.MODO_REAL else "TESTE"
+        logger.info(f"Iniciando colocação de ordem de venda MODO {mode} para {symbol} (Quantidade: {quantity}).")
+
+        # Formatar a quantidade para garantir que atenda às regras de precisão do símbolo
+        symbol_info = client.get_symbol_info(symbol)
+        _, precision = _get_lot_size_precision(symbol_info)
+
+        formatted_quantity = f"{quantity:.{precision}f}"
+
+        if config.MODO_REAL:
+            logger.warning(f"MODO REAL ATIVADO. Executando ordem de venda real para {symbol}.")
+            order = client.create_order(
+                symbol=symbol,
+                side=Client.SIDE_SELL,
+                type=Client.ORDER_TYPE_MARKET,
+                quantity=float(formatted_quantity)
+            )
+            return {"status": "SUCCESS", "order_id": order.get('orderId', 'N/A')}
+        else:
+            logger.info("MODO DE TESTE. Executando create_test_order para venda.")
+            client.create_test_order(
+                symbol=symbol,
+                side=Client.SIDE_SELL,
+                type=Client.ORDER_TYPE_MARKET,
+                quantity=float(formatted_quantity)
+            )
+            logger.info(f"Ordem de venda de TESTE para {symbol} foi bem-sucedida (simulação).")
+            return {"status": "TEST_SUCCESS"}
+
+    except BinanceAPIException as e:
+        logger.error(f"Erro da API da Binance ao tentar vender {symbol}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Ocorreu um erro inesperado ao vender {symbol}: {e}", exc_info=True)
+        return None

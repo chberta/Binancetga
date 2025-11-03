@@ -22,51 +22,33 @@ VALOR_OPERACAO_USDT = 10.0
 # Timeframe para análise dos gráficos (ex: '1h', '4h', '1d').
 TIMEFRAME = '1h'
 
-# --- Parâmetros de Descoberta de Ativos v2.0 ---
-TOP_N_VOLUME = 150
-TOP_N_MCAP = 150
-COMBINE_MODE = 'blend'
-TOP_N_FINAL = 50
-
 # --- Lista de Criptomoedas a Ignorar (Sua Lista Negra Pessoal) ---
-# Adicione aqui os símbolos que você não deseja operar por razões estratégicas.
-# O robô já filtra automaticamente os tokens de alavancagem (UP/DOWN).
+# Adicione aqui os símbolos que você não deseja operar.
 LISTA_NEGRA = [
     # "SHIBUSDT",
     # "PEPEUSDT",
-    # "EPXUSDT",
 ]
 
-# --- Parâmetros de Análise Técnica ---
-MA_CURTA = 9
-MA_LONGA = 21
-RSI_PERIODO = 14
-RSI_SOBRECOMPRA = 70
-RSI_SOBREVENDA = 30
-UT_BOT_PERIODO = 10
-UT_BOT_ATR_MULTIPLICADOR = 1.0
-MAX_CANDLES_SINAL_REcente = 3
-
-# --- Parâmetros da Estratégia Custom HiLo ---
+# --- Parâmetros da Estratégia Chilo RSI ---
 CHILO_LENGTH = 34
 CHILO_OFFSET = 0
 CHILO_HILO_TYPE = "HiLo"  # 'HiLo' ou 'HiLo Activator'
 CHILO_MA_TYPE = "SMA"     # 'SMA' ou 'EMA'
 
-# --- Parâmetros de Trade e Risco ---
+# --- Parâmetros de Risco e Execução ---
 # Interruptor de segurança:
 # True = Executa ordens reais na Binance.
-# False = Executa apenas ordens de teste (create_test_order), sem usar dinheiro real.
+# False = Executa apenas ordens de teste, sem usar dinheiro real.
 MODO_REAL = False
 
-# Percentual para definir o Trailing Stop inicial a partir do preço de entrada.
+# Percentual de perda máxima aceitável. O robô venderá o ativo se ele cair
+# este percentual abaixo do preço de compra.
+STOP_LOSS_PERCENT = 3.0 # Ex: 3.0 para 3%
+
+# Percentual para definir o Trailing Stop. Ele é ativado após o preço
+# subir a mesma porcentagem e, a partir daí, sobe junto com o preço.
 TRAILING_STOP_PERCENT = 5.0 # Ex: 5.0 para 5%
 
-# Alvos de Take Profit (saídas parciais). As listas devem ter o mesmo tamanho.
-TAKE_PROFIT_PERCENT = [4.0, 8.0, 12.0] # Alvos em % de lucro
-TAKE_PROFIT_QUANT = [50, 50, 100]      # % da posição a ser vendida em cada alvo
-
-# Período de "castigo" para um ativo após uma venda (em múltiplos do timeframe).
-COOLDOWN_PERIOD = 3
-# Tempo em segundos para esperar e verificar se uma ordem foi executada.
-ORDER_CHECK_TIMEOUT_S = 10
+# Alvo de lucro final. A posição será vendida quando atingir este
+# percentual de lucro, caso o trailing stop ainda não tenha sido acionado.
+TAKE_PROFIT_PERCENT = 10.0 # Ex: 10.0 para 10% de lucro
