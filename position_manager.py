@@ -85,6 +85,15 @@ def check_active_positions(client, active_trades: list):
 
         pnl = ((current_price - entry_price) / entry_price) * 100
 
+        # Log de status para cada ativo
+        trailing_stop_price = trade.get('trailing_stop_price')
+        trailing_stop_status = f"{trailing_stop_price:.8f}" if trailing_stop_price else "(inativo)"
+        logger.info(
+            f" -> Verificando {symbol}: Entrada: {entry_price:.8f}, "
+            f"Atual: {current_price:.8f}, PnL: {pnl:+.2f}%. "
+            f"Trailing Stop: {trailing_stop_status}"
+        )
+
         # --- 1. Stop Loss Fixo ---
         stop_loss_price = entry_price * (1 - config.STOP_LOSS_PERCENT / 100)
         if current_price <= stop_loss_price:
