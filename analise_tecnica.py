@@ -2,9 +2,6 @@
 
 """
 Módulo de Análise Técnica
-
-Este módulo contém a lógica para analisar um ativo e identificar
-sinais de compra com base na estratégia definida.
 """
 
 import config
@@ -12,48 +9,55 @@ import pandas as pd
 import estrategia_chilo
 from binance.client import Client
 
-# Definição dos possíveis status do sinal para clareza
-SINAL_RECENTE = "SINAL_RECENTE"
-SINAL_ANTIGO = "SINAL_ANTIGO"
+# Definição dos possíveis status do sinal
+SINAL_COMPRA = "SINAL_COMPRA"
 SEM_SINAL = "SEM_SINAL"
 
-def get_chilo_signal_status(client: Client, symbol: str) -> str:
+def get_chilo_signal_status(client: Client, symbol: str) -> tuple[str, int]:
     """
     Verifica o status do sinal Chilo RSI para um ativo.
 
-    Retorna um de três estados:
-    - SINAL_RECENTE: Se o cruzamento de compra ocorreu na última vela fechada.
-    - SINAL_ANTIGO: Se o ativo está em tendência de compra, mas o cruzamento não foi recente.
-    - SEM_SINAL: Se não há tendência de compra.
+    Retorna uma tupla com:
+    - O status do sinal ('SINAL_COMPRA' ou 'SEM_SINAL').
+    - A idade do sinal em velas (0 se não houver sinal).
     """
     try:
-        # 1. Obter dados históricos
         klines = client.get_klines(symbol=symbol, interval=config.TIMEFRAME, limit=300)
-        if len(klines) < config.CHILO_LENGTH + 5: # Buffer de segurança
-            return SEM_SINAL
+        if len(klines) < config.CHILO_LENGTH + 5:
+            return SEM_SINAL, 0
 
         df = pd.DataFrame(klines, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_av', 'trades', 'tb_base_av', 'tb_quote_av', 'ignore'])
         for col in ['open', 'high', 'low', 'close', 'volume']:
             df[col] = pd.to_numeric(df[col])
 
-        # 2. Rodar a estratégia para obter os sinais
         chilo_cross_signals, chilo_state_signals = estrategia_chilo.getChiloStrategy(df)
 
-        if chilo_cross_signals is None or chilo_state_signals is None or len(chilo_cross_signals) < 2:
-            return SEM_SINAL
+        if chilo_state_signals is None or chilo_state_signals.empty or len(chilo_state_signals) < 2:
+            return SEM_SINAL, 0
 
-        # 3. Analisar a última vela fechada (índice -2)
-        ultima_vela_fechada_idx = -2
+        # Analisa a última vela fechada (índice -2)
+        ultima_vela_idx = -2
 
-        # Verifica se o cruzamento de compra ocorreu na última vela fechada
-        if chilo_cross_signals.iloc[ultima_vela_fechada_idx]:
-            return SINAL_RECENTE
+        # Se a última vela fechada não está em estado de compra, não há sinal.
+        if not chilo_state_signals.iloc[ultima_vela_idx]:
+            return SEM_SINAL, 0
 
-        # Se não houve cruzamento recente, verifica se a tendência de compra já está ativa
-        if chilo_state_signals.iloc[ultima_vela_fechada_idx]:
-            return SINAL_ANTIGO
+        # Se está em estado de compra, calcula há quantas velas começou.
+        idade_sinal = 0
+        # Itera de trás para frente a partir da última vela fechada
+        for i in range(len(chilo_state_signals) + ultima_vela_idx, -1, -1):
+            if chilo_state_signals.iloc[i]:
+                # Se o sinal de cruzamento aconteceu neste candle, a idade é a contagem.
+                if chilo_cross_signals.iloc[i]:
+                    idade_sinal += 1
+                    break
+                else:
+                    idade_sinal += 1
+            else:
+                # Chegou ao fim da tendência de compra
+                break
+
+        return SINAL_COMPRA, idade_sinal
 
     except Exception:
-        return SEM_SINAL
-
-    return SEM_SINAL
+        return SEM_SINAL, 0

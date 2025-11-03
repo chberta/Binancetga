@@ -9,6 +9,7 @@ Contém funções para encontrar e classificar os melhores pares para análise.
 import pandas as pd
 from binance.client import Client
 from logger_setup import logger
+import config
 from datetime import datetime, timedelta
 
 def get_tradable_spot_symbols(client: Client) -> set:
@@ -56,10 +57,10 @@ def discover_top_by_volume(client: Client, tradable_symbols: set) -> list:
     df_tickers = df_tickers[df_tickers['symbol'].isin(tradable_symbols)]
 
     df_tickers['quoteVolume'] = pd.to_numeric(df_tickers['quoteVolume'])
-    top_100_volume_pairs = df_tickers.sort_values(by='quoteVolume', ascending=False).head(100)
+    top_volume_pairs = df_tickers.sort_values(by='quoteVolume', ascending=False).head(config.TOP_N_VOLUME)
 
-    logger.info(f"Selecionados os 100 principais pares por volume.")
-    return top_100_volume_pairs['symbol'].tolist()
+    logger.info(f"Selecionados os {len(top_volume_pairs)} principais pares por volume.")
+    return top_volume_pairs['symbol'].tolist()
 
 def filter_assets_by_age(client: Client, symbols: list, min_weeks_old: int = 52) -> list:
     """Filtra uma lista de símbolos, mantendo apenas aqueles com mais de X semanas."""

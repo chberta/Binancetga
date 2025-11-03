@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
 
 import config
-import pandas as pd
 from binance.client import Client
-from datetime import datetime, timedelta
 import analise_tecnica
 import discovery
 import time
-from datetime import timezone
+from datetime import datetime, timezone, timedelta
 from logger_setup import logger
 import state_manager
 import order_manager
@@ -22,73 +20,68 @@ def conectar_binance():
             logger.info("Conexão com a Binance bem-sucedida!")
             return client
         else:
-            logger.error(f"Erro ao conectar com a Binance. Status: {status['msg']}")
+            logger.error(f"Erro ao conectar: {status['msg']}")
             return None
     except Exception as e:
-        logger.error(f"Ocorreu um erro ao conectar com a API da Binance: {e}")
+        logger.error(f"Erro ao conectar com a API da Binance: {e}")
         return None
 
 def buscar_e_filtrar_ativos(client):
     """Orquestra o processo de descoberta e filtragem de ativos."""
     try:
         tradable_symbols = discovery.get_tradable_spot_symbols(client)
-        if not tradable_symbols:
-            logger.warning("Nenhum símbolo negociável encontrado.")
-            return []
+        if not tradable_symbols: return []
 
-        top_100_volume = discovery.discover_top_by_volume(client, tradable_symbols)
-        if not top_100_volume:
-            logger.warning("Não foi possível obter a lista de ativos por volume.")
-            return []
+        top_volume = discovery.discover_top_by_volume(client, tradable_symbols)
+        if not top_volume: return []
 
-        assets_antigos = discovery.filter_assets_by_age(client, top_100_volume, min_weeks_old=52)
+        assets_antigos = discovery.filter_assets_by_age(client, top_volume)
 
         assets_finais = [s for s in assets_antigos if s not in getattr(config, 'LISTA_NEGRA', [])]
-        logger.info(f"Encontrados {len(assets_finais)} ativos que atendem a todos os critérios.")
+        logger.info(f"Encontrados {len(assets_finais)} ativos qualificados para análise.")
         return assets_finais
     except Exception as e:
-        logger.error(f"Ocorreu um erro crítico ao buscar e filtrar ativos: {e}", exc_info=True)
+        logger.error(f"Erro crítico ao buscar e filtrar ativos: {e}", exc_info=True)
         return []
 
 def run_scan_and_open_trades(client, vagas_disponiveis: int):
-    """Executa o ciclo de scan e abre novas posições com logs detalhados."""
-    logger.info("--- Iniciando Etapa de Busca por Novos Ativos ---")
-    trades_ativos = state_manager.ler_trades_ativos()
-    simbolos_ativos = {trade['symbol'] for trade in trades_ativos}
+    """Executa o ciclo de scan com logs avançados e lógica de entrada flexível."""
+    logger.info("--- Iniciando Busca por Novos Ativos ---")
+    simbolos_ativos = {trade['symbol'] for trade in state_manager.ler_trades_ativos()}
 
-    ativos_filtrados = buscar_e_filtrar_ativos(client)
-    ativos_para_analise = [a for a in ativos_filtrados if a not in simbolos_ativos]
+    ativos_para_analise = [a for a in buscar_e_filtrar_ativos(client) if a not in simbolos_ativos]
 
     if not ativos_para_analise:
         logger.info("Nenhum novo ativo encontrado para análise.")
         return
 
     logger.info(f"Ativos a serem analisados: {', '.join(ativos_para_analise)}")
-    logger.info(f"--- Iniciando Análise de Sinal Chilo para {len(ativos_para_analise)} ativos ---")
+    logger.info(f"--- Iniciando Análise de Sinal Chilo (Idade Máx. do Sinal: {config.MAX_IDADE_SINAL_CANDLES} velas) ---")
 
     for symbol in ativos_para_analise:
         if vagas_disponiveis <= 0:
             logger.info("Todas as vagas de trade foram preenchidas.")
             break
 
-        status = analise_tecnica.get_chilo_signal_status(client, symbol)
+        status, idade_sinal = analise_tecnica.get_chilo_signal_status(client, symbol)
 
-        if status == analise_tecnica.SINAL_RECENTE:
-            logger.info(f" -> {symbol}: SINAL DE COMPRA RECENTE! Tentando abrir trade...")
-            resultado_ordem = order_manager.place_buy_order(
-                client, symbol=symbol, quote_order_qty=config.VALOR_OPERACAO_USDT
-            )
-            if resultado_ordem:
-                novo_trade = {
-                    "symbol": resultado_ordem['symbol'], "status": "ACTIVE",
-                    "entry_price": resultado_ordem['entry_price'], "quantity": resultado_ordem['quantity'],
-                }
-                state_manager.adicionar_trade(novo_trade)
-                vagas_disponiveis -= 1
+        if status == analise_tecnica.SINAL_COMPRA:
+            if idade_sinal <= config.MAX_IDADE_SINAL_CANDLES:
+                logger.info(f" -> {symbol}: SINAL DE COMPRA VÁLIDO (iniciado há {idade_sinal} vela(s)). Tentando abrir trade...")
+                resultado_ordem = order_manager.place_buy_order(
+                    client, symbol=symbol, quote_order_qty=config.VALOR_OPERACAO_USDT
+                )
+                if resultado_ordem:
+                    novo_trade = {
+                        "symbol": resultado_ordem['symbol'], "status": "ACTIVE",
+                        "entry_price": resultado_ordem['entry_price'], "quantity": resultado_ordem['quantity'],
+                    }
+                    state_manager.adicionar_trade(novo_trade)
+                    vagas_disponiveis -= 1
+                else:
+                    logger.warning(f"Falha ao colocar ordem de compra para {symbol}.")
             else:
-                logger.warning(f"Falha ao colocar ordem de compra para {symbol}.")
-        elif status == analise_tecnica.SINAL_ANTIGO:
-            logger.info(f" -> {symbol}: Sinal de compra antigo (já em tendência).")
+                logger.info(f" -> {symbol}: Sinal de compra antigo (iniciado há {idade_sinal} vela(s)). Ignorando.")
         else: # SEM_SINAL
             logger.info(f" -> {symbol}: Sem sinal de compra.")
 
@@ -115,9 +108,10 @@ def main():
             logger.info("Capacidade máxima de trades atingida.")
 
         try:
-            tf_map = {'h': 60, 'd': 1440}
-            multiplier = tf_map.get(config.TIMEFRAME[-1], 1)
-            tf_em_minutos = int(config.TIMEFRAME[:-1]) * multiplier
+            tf_map = {'h': 60, 'd': 1440, 'm': 1}
+            timeframe_lower = config.TIMEFRAME.lower()
+            multiplier = tf_map.get(timeframe_lower[-1], 1)
+            tf_em_minutos = int(timeframe_lower[:-1]) * multiplier
 
             agora = datetime.now(timezone.utc)
             proximo_fechamento = (agora + timedelta(minutes=tf_em_minutos)).replace(

@@ -21,6 +21,8 @@ QUANTIDADE_CRIPTOS_OPERAR = 5
 VALOR_OPERACAO_USDT = 10.0
 # Timeframe para análise dos gráficos (ex: '1h', '4h', '1d').
 TIMEFRAME = '1h'
+# Número de ativos de maior volume a serem considerados para análise.
+TOP_N_VOLUME = 100
 
 # --- Lista de Criptomoedas a Ignorar (Sua Lista Negra Pessoal) ---
 # Adicione aqui os símbolos que você não deseja operar.
@@ -34,6 +36,9 @@ CHILO_LENGTH = 34
 CHILO_OFFSET = 0
 CHILO_HILO_TYPE = "HiLo"  # 'HiLo' ou 'HiLo Activator'
 CHILO_MA_TYPE = "SMA"     # 'SMA' ou 'EMA'
+# Idade máxima (em velas) que um sinal de compra pode ter para ser considerado.
+# 1 significa que o sinal deve ter ocorrido na última vela fechada.
+MAX_IDADE_SINAL_CANDLES = 1
 
 # --- Parâmetros de Risco e Execução ---
 # Interruptor de segurança:
