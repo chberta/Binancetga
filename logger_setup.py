@@ -3,43 +3,54 @@
 """
 Módulo de Configuração do Logger
 
-Configura um logger padrão para o projeto, com saída para o console
-e para um arquivo de log persistente.
+Configura dois loggers:
+1. Um logger principal para o log geral de atividades.
+2. Um logger dedicado para registrar apenas operações de trade (compras/vendas).
 """
 
 import logging
 import sys
 import config
+import os
 
-def setup_logger():
-    """
-    Configura e retorna um logger.
-    """
-    # Define o formato da mensagem de log
+def setup_loggers():
+    """Configura e retorna os dois loggers: principal e de trades."""
+    # Garante que o diretório de logs exista
+    log_dir = os.path.dirname(config.LOG_FILE)
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
+    # --- Configuração do Logger Principal ---
     log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(module)s - %(message)s')
-
-    # Cria o logger principal
     logger = logging.getLogger('robot_trader')
     logger.setLevel(getattr(logging, config.LOG_LEVEL.upper(), logging.INFO))
+    if not logger.handlers:
+        # Handler para o console
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(log_format)
+        logger.addHandler(console_handler)
+        # Handler para o arquivo principal
+        try:
+            file_handler = logging.FileHandler(config.LOG_FILE, mode='a', encoding='utf-8')
+            file_handler.setFormatter(log_format)
+            logger.addHandler(file_handler)
+        except Exception as e:
+            logger.error(f"Não foi possível configurar o log em arquivo principal: {e}")
 
-    # Evita adicionar múltiplos handlers se a função for chamada mais de uma vez
-    if logger.hasHandlers():
-        logger.handlers.clear()
+    # --- Configuração do Logger de Trades ---
+    trade_log_format = logging.Formatter('%(asctime)s,%(message)s')
+    trades_logger = logging.getLogger('trades_logger')
+    trades_logger.setLevel(logging.INFO) # O log de trades sempre registrará as informações
+    trades_logger.propagate = False # Evita que o log de trades vá para o logger principal
+    if not trades_logger.handlers:
+        try:
+            trade_file_handler = logging.FileHandler(config.TRADES_LOG_FILE, mode='a', encoding='utf-8')
+            trade_file_handler.setFormatter(trade_log_format)
+            trades_logger.addHandler(trade_file_handler)
+        except Exception as e:
+            logger.error(f"Não foi possível configurar o log de trades: {e}")
 
-    # Handler para o console
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(log_format)
-    logger.addHandler(console_handler)
+    return logger, trades_logger
 
-    # Handler para o arquivo
-    try:
-        file_handler = logging.FileHandler(config.LOG_FILE, mode='a', encoding='utf-8')
-        file_handler.setFormatter(log_format)
-        logger.addHandler(file_handler)
-    except Exception as e:
-        logger.error(f"Não foi possível configurar o log em arquivo: {e}")
-
-    return logger
-
-# Cria uma instância global do logger para ser importada por outros módulos
-logger = setup_logger()
+# Cria instâncias globais para serem importadas
+logger, trades_logger = setup_loggers()

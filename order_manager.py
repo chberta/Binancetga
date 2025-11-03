@@ -10,7 +10,7 @@ Ele lida com a criação, cancelamento e verificação de ordens de compra e ven
 import config
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
-from logger_setup import logger
+from logger_setup import logger, trades_logger
 import math
 
 def _get_lot_size_precision(symbol_info: dict) -> tuple[float, int]:
@@ -48,9 +48,12 @@ def place_buy_order(client, symbol: str, quote_order_qty: float):
 
         quantity = quote_order_qty / entry_price
         # Arredonda a quantidade para baixo para o múltiplo de step_size mais próximo para evitar erros
-        formatted_quantity = math.floor(quantity / step_size) * step_size
+        quantity = math.floor(quantity / step_size) * step_size
 
-        logger.info(f"Quantidade calculada para {symbol}: {formatted_quantity:.{precision}f}")
+        # Garante que a quantidade final seja um float com a precisão correta
+        formatted_quantity = float(f"{quantity:.{precision}f}")
+
+        logger.info(f"Quantidade calculada para {symbol}: {formatted_quantity}")
 
         # 3. Executar a ordem (Real ou Teste)
         if config.MODO_REAL:
@@ -70,6 +73,7 @@ def place_buy_order(client, symbol: str, quote_order_qty: float):
             avg_price = sum(float(fill['price']) * float(fill['qty']) for fill in fills) / float(order['executedQty'])
             total_quantity = float(order['executedQty'])
             logger.info(f"Ordem de compra REAL para {symbol} executada. Preço médio: {avg_price}, Quantidade: {total_quantity}")
+            trades_logger.info(f"BUY,{symbol},{avg_price},{total_quantity}")
             return {"status": "SUCCESS", "symbol": symbol, "entry_price": avg_price, "quantity": total_quantity}
         else:
             logger.info("MODO DE TESTE. Executando create_test_order.")
@@ -80,6 +84,7 @@ def place_buy_order(client, symbol: str, quote_order_qty: float):
                 quantity=formatted_quantity
             )
             logger.info(f"Ordem de compra de TESTE para {symbol} foi bem-sucedida (simulação).")
+            trades_logger.info(f"BUY,{symbol},{entry_price},{formatted_quantity}")
             # Retorna os dados como se a ordem tivesse sido executada pelo preço do order book
             return {"status": "TEST_SUCCESS", "symbol": symbol, "entry_price": entry_price, "quantity": formatted_quantity}
 
@@ -100,9 +105,16 @@ def place_sell_order(client, symbol: str, quantity: float):
 
         # Formatar a quantidade para garantir que atenda às regras de precisão do símbolo
         symbol_info = client.get_symbol_info(symbol)
-        _, precision = _get_lot_size_precision(symbol_info)
+        step_size, precision = _get_lot_size_precision(symbol_info)
+        if step_size == 0.0:
+            logger.error(f"Não foi possível encontrar o stepSize para {symbol} na venda.")
+            return None
 
-        formatted_quantity = f"{quantity:.{precision}f}"
+        # Arredonda a quantidade para baixo para o múltiplo de step_size mais próximo
+        quantity = math.floor(quantity / step_size) * step_size
+        formatted_quantity = float(f"{quantity:.{precision}f}")
+
+        logger.info(f"Quantidade de venda formatada para {symbol}: {formatted_quantity}")
 
         if config.MODO_REAL:
             logger.warning(f"MODO REAL ATIVADO. Executando ordem de venda real para {symbol}.")
@@ -110,8 +122,16 @@ def place_sell_order(client, symbol: str, quantity: float):
                 symbol=symbol,
                 side=Client.SIDE_SELL,
                 type=Client.ORDER_TYPE_MARKET,
-                quantity=float(formatted_quantity)
+                quantity=formatted_quantity
             )
+            # Para uma ordem real, o preço de venda é o preço médio dos 'fills'
+            fills = order.get('fills', [])
+            if fills:
+                avg_price = sum(float(fill['price']) * float(fill['qty']) for fill in fills) / float(order['executedQty'])
+                trades_logger.info(f"SELL,{symbol},{avg_price},{order['executedQty']}")
+            else:
+                trades_logger.info(f"SELL,{symbol},N/A,{order.get('executedQty', 'N/A')}")
+
             return {"status": "SUCCESS", "order_id": order.get('orderId', 'N/A')}
         else:
             logger.info("MODO DE TESTE. Executando create_test_order para venda.")
@@ -119,9 +139,11 @@ def place_sell_order(client, symbol: str, quantity: float):
                 symbol=symbol,
                 side=Client.SIDE_SELL,
                 type=Client.ORDER_TYPE_MARKET,
-                quantity=float(formatted_quantity)
+                quantity=formatted_quantity
             )
             logger.info(f"Ordem de venda de TESTE para {symbol} foi bem-sucedida (simulação).")
+            # Em modo teste, não temos o preço de venda, então registramos 'N/A'
+            trades_logger.info(f"SELL,{symbol},N/A,{formatted_quantity}")
             return {"status": "TEST_SUCCESS"}
 
     except BinanceAPIException as e:

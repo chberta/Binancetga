@@ -11,8 +11,10 @@ API_SECRET = "SEU_API_SECRET_AQUI"
 # --- Configurações de Log ---
 # Nível de detalhe do log: 'DEBUG', 'INFO', 'WARNING', 'ERROR'
 LOG_LEVEL = "INFO"
-# Caminho para o arquivo de log
+# Caminho para o arquivo de log principal
 LOG_FILE = "data/robot.log"
+# Caminho para o arquivo de log que registrará apenas as operações (compras/vendas)
+TRADES_LOG_FILE = "data/trades.log"
 
 # --- Parâmetros de Operação ---
 # Quantidade máxima de trades que o robô pode manter abertos simultaneamente.
