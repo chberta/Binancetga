@@ -103,5 +103,5 @@ def getChiloStrategy(stock_data: pd.DataFrame):
             # Se não for possível gerar os detalhes, retorna um dicionário vazio
              return False, {}, buy
 
-    # Retorna a decisão, os detalhes e a série de sinais de compra brutos
-    return chilo_trade_decision, detalhes, buy
+    # Retorna a série de sinais de cruzamento e a série de estado da tendência
+    return buy, buy_state

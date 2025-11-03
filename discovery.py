@@ -28,7 +28,6 @@ def get_tradable_spot_symbols(client: Client) -> set:
         if s.get('permissions') and 'SPOT' in s['permissions']
         and s['status'] == 'TRADING'
         and s['symbol'].endswith('USDT')
-        and not s.get('isSpotTradingAllowed', False) == False
     }
     logger.info(f"Encontrados {len(tradable_symbols)} ativos SPOT/USDT negociáveis.")
     return tradable_symbols
