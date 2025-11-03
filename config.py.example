@@ -54,6 +54,7 @@ STOP_LOSS_PERCENT = 3.0 # Ex: 3.0 para 3%
 # subir a mesma porcentagem e, a partir daí, sobe junto com o preço.
 TRAILING_STOP_PERCENT = 5.0 # Ex: 5.0 para 5%
 
-# Alvo de lucro final. A posição será vendida quando atingir este
-# percentual de lucro, caso o trailing stop ainda não tenha sido acionado.
-TAKE_PROFIT_PERCENT = 10.0 # Ex: 10.0 para 10% de lucro
+# Estratégia de Take Profit Parcial (Scaling Out).
+# As duas listas devem ter o mesmo número de elementos.
+TAKE_PROFIT_TARGETS = [5.0, 10.0, 20.0]  # Alvos de lucro em porcentagem (ex: 5%, 10%, 20%).
+TAKE_PROFIT_AMOUNTS = [25, 50, 100]       # Percentual da posição INICIAL a ser vendida em cada alvo.

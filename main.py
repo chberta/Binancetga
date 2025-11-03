@@ -72,9 +72,14 @@ def run_scan_and_open_trades(client, vagas_disponiveis: int):
                     client, symbol=symbol, quote_order_qty=config.VALOR_OPERACAO_USDT
                 )
                 if resultado_ordem:
+                    qty = resultado_ordem['quantity']
                     novo_trade = {
-                        "symbol": resultado_ordem['symbol'], "status": "ACTIVE",
-                        "entry_price": resultado_ordem['entry_price'], "quantity": resultado_ordem['quantity'],
+                        "symbol": resultado_ordem['symbol'],
+                        "status": "ACTIVE",
+                        "entry_price": resultado_ordem['entry_price'],
+                        "quantity": qty,
+                        "initial_quantity": qty,  # Salva a quantidade original
+                        "next_target_index": 0,    # Começa mirando no primeiro alvo
                     }
                     state_manager.adicionar_trade(novo_trade)
                     vagas_disponiveis -= 1
