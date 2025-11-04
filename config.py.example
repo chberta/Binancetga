@@ -60,3 +60,7 @@ TRAILING_STOP_PERCENT = 5.0 # Ex: 5.0 para 5%
 # As duas listas devem ter o mesmo número de elementos.
 TAKE_PROFIT_TARGETS = [5.0, 10.0, 20.0]  # Alvos de lucro em porcentagem (ex: 5%, 10%, 20%).
 TAKE_PROFIT_AMOUNTS = [25, 50, 100]       # Percentual da posição INICIAL a ser vendida em cada alvo.
+
+# Número de velas que um ativo deve "descansar" após ser vendido antes que o
+# robô possa comprá-lo novamente. Ajuda a evitar reentradas muito rápidas.
+COOLDOWN_PERIODO_VELAS = 3

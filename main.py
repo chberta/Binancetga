@@ -48,8 +48,15 @@ def run_scan_and_open_trades(client, vagas_disponiveis: int):
     """Executa o ciclo de scan com logs avançados e lógica de entrada flexível."""
     logger.info("--- Iniciando Busca por Novos Ativos ---")
     simbolos_ativos = {trade['symbol'] for trade in state_manager.ler_trades_ativos()}
+    simbolos_em_cooldown = state_manager.obter_ativos_em_cooldown()
 
-    ativos_para_analise = [a for a in buscar_e_filtrar_ativos(client) if a not in simbolos_ativos]
+    ativos_brutos = buscar_e_filtrar_ativos(client)
+
+    # Filtra os ativos que já estão em operação ou em cooldown
+    ativos_para_analise = [a for a in ativos_brutos if a not in simbolos_ativos and a not in simbolos_em_cooldown]
+
+    if simbolos_em_cooldown:
+        logger.info(f"Ativos em cooldown ignorados nesta análise: {', '.join(simbolos_em_cooldown)}")
 
     if not ativos_para_analise:
         logger.info("Nenhum novo ativo encontrado para análise.")

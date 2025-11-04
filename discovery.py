@@ -27,17 +27,20 @@ def get_tradable_spot_symbols(client: Client) -> set:
 
     logger.info("Filtrando por ativos de qualidade (SPOT, TRADING, par USDT, não-alavancado)...")
 
+    # Lista de stablecoins a serem ignoradas para não tentar operá-las
+    stablecoins = {'USDC', 'FDUSD', 'TUSD', 'BUSD', 'DAI', 'USDP', 'PAXG', 'EUR'}
+
     tradable_symbols = set()
     for s in symbols_data:
-        # Condições para um ativo ser considerado válido e seguro para a nossa estratégia
+        base_asset = s.get('baseAsset', '')
         if (s.get('status') == 'TRADING' and
             s.get('isSpotTradingAllowed') and
             s.get('quoteAsset') == 'USDT' and
-            # Filtra tokens de alavancagem (ex: BTCUP, ETHDOWN) e outros indesejados
-            'UP' not in s.get('baseAsset', '') and
-            'DOWN' not in s.get('baseAsset', '') and
-            'BEAR' not in s.get('baseAsset', '') and
-            'BULL' not in s.get('baseAsset', '')):
+            # Filtra stablecoins
+            base_asset not in stablecoins and
+            # Filtra tokens de alavancagem
+            'UP' not in base_asset and 'DOWN' not in base_asset and
+            'BEAR' not in base_asset and 'BULL' not in base_asset):
             tradable_symbols.add(s['symbol'])
 
     logger.info(f"Encontrados {len(tradable_symbols)} ativos SPOT/USDT negociáveis e qualificados.")
