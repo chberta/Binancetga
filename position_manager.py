@@ -16,10 +16,15 @@ def _handle_full_sell(client, trade: dict, reason: str, pnl: float):
     """Vende 100% da posição restante e a remove da memória."""
     symbol = trade['symbol']
     quantity = trade['quantity']
-    logger.info(f"ORDEM DE VENDA TOTAL para {symbol}. Motivo: {reason}. PnL: {pnl:.2f}%.")
+
+    # Calcula o PnL em USDT para a porção restante da posição
+    proporcao_restante = quantity / trade['initial_quantity']
+    pnl_usdt = (pnl / 100) * (config.VALOR_OPERACAO_USDT * proporcao_restante)
+
+    logger.info(f"ORDEM DE VENDA TOTAL para {symbol}. Motivo: {reason}. PnL: {pnl:.2f}% ({pnl_usdt:+.2f} USDT).")
 
     # Log completo da venda final
-    trades_logger.info(f"CLOSE,{symbol},{reason},{pnl:.2f}%,{quantity}")
+    trades_logger.info(f"CLOSE,{symbol},{reason},{pnl:.2f}%,{pnl_usdt:+.2f} USDT,{quantity}")
 
     if order_manager.place_sell_order(client, symbol, quantity):
         state_manager.remover_trade(symbol)
@@ -43,10 +48,14 @@ def _handle_partial_sell(client, trade: dict, pnl: float):
     if sell_percentage == 100:
         quantity_to_sell = trade['quantity']
 
-    logger.info(f"ORDEM DE VENDA PARCIAL para {symbol} (Alvo #{target_index + 1}). PnL: {pnl:.2f}%. Vendendo {quantity_to_sell} unidades.")
+    # Calcula o PnL em USDT para a porção que está sendo vendida
+    proporcao_vendida = quantity_to_sell / trade['initial_quantity']
+    pnl_usdt = (pnl / 100) * (config.VALOR_OPERACAO_USDT * proporcao_vendida)
+
+    logger.info(f"ORDEM DE VENDA PARCIAL para {symbol} (Alvo #{target_index + 1}). PnL: {pnl:.2f}% ({pnl_usdt:+.2f} USDT). Vendendo {quantity_to_sell} unidades.")
 
     # Log completo da venda parcial
-    trades_logger.info(f"PARTIAL_SELL,{symbol},TAKE_PROFIT_TARGET_{target_index + 1},{pnl:.2f}%,{quantity_to_sell}")
+    trades_logger.info(f"PARTIAL_SELL,{symbol},TAKE_PROFIT_TARGET_{target_index + 1},{pnl:.2f}%,{pnl_usdt:+.2f} USDT,{quantity_to_sell}")
 
     if order_manager.place_sell_order(client, symbol, quantity_to_sell):
         trade['quantity'] -= quantity_to_sell
