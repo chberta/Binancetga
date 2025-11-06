@@ -39,18 +39,18 @@ def _handle_partial_sell(client, trade: dict, pnl: float):
     symbol = trade['symbol']
     target_index = trade.get('next_target_index', 0)
 
-    # Calcula a quantidade a ser vendida
+    # Calcula a quantidade a ser vendida com base na QUANTIDADE RESTANTE
     sell_percentage = config.TAKE_PROFIT_AMOUNTS[target_index]
-    initial_quantity = trade['initial_quantity']
-    quantity_to_sell = initial_quantity * (sell_percentage / 100.0)
+    quantity_to_sell = trade['quantity'] * (sell_percentage / 100.0)
 
     # Ajuste para o último alvo, garantindo que vende tudo o que sobrou
     if sell_percentage == 100:
         quantity_to_sell = trade['quantity']
 
     # Calcula o PnL em USDT para a porção que está sendo vendida
-    proporcao_vendida = quantity_to_sell / trade['initial_quantity']
-    pnl_usdt = (pnl / 100) * (config.VALOR_OPERACAO_USDT * proporcao_vendida)
+    # (baseado no valor total investido, proporcional à quantidade vendida)
+    proporcao_vendida_do_total = quantity_to_sell / trade['initial_quantity']
+    pnl_usdt = (pnl / 100) * (config.VALOR_OPERACAO_USDT * proporcao_vendida_do_total)
 
     logger.info(f"ORDEM DE VENDA PARCIAL para {symbol} (Alvo #{target_index + 1}). PnL: {pnl:.2f}% ({pnl_usdt:+.2f} USDT). Vendendo {quantity_to_sell} unidades.")
 
