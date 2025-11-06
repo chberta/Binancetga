@@ -22,6 +22,16 @@ def _get_lot_size_precision(symbol_info: dict) -> tuple[float, int]:
             return step_size, precision
     return 0.0, 0 # Fallback
 
+def _get_price_precision(symbol_info: dict) -> int:
+    """Extrai a precisão do preço do filtro PRICE_FILTER."""
+    for f in symbol_info['filters']:
+        if f['filterType'] == 'PRICE_FILTER':
+            tick_size = float(f['tickSize'])
+            # A precisão é o número de casas decimais do tickSize
+            precision = int(round(-math.log(tick_size, 10), 0))
+            return precision
+    return 8 # Um fallback comum para preços cripto
+
 def place_buy_order(client, symbol: str, quote_order_qty: float):
     """
     Coloca uma ordem de compra a mercado (real ou de teste), buscando o preço real,
@@ -52,6 +62,7 @@ def place_buy_order(client, symbol: str, quote_order_qty: float):
 
         # Garante que a quantidade final seja um float com a precisão correta
         formatted_quantity = float(f"{quantity:.{precision}f}")
+        price_precision = _get_price_precision(symbol_info)
 
         logger.info(f"Quantidade calculada para {symbol}: {formatted_quantity}")
 
@@ -73,7 +84,7 @@ def place_buy_order(client, symbol: str, quote_order_qty: float):
             avg_price = sum(float(fill['price']) * float(fill['qty']) for fill in fills) / float(order['executedQty'])
             total_quantity = float(order['executedQty'])
             logger.info(f"Ordem de compra REAL para {symbol} executada. Preço médio: {avg_price}, Quantidade: {total_quantity}")
-            trades_logger.info(f"BUY,{symbol},{avg_price},{total_quantity}")
+            trades_logger.info(f"BUY,{symbol},{avg_price:.{price_precision}f},{total_quantity}")
             return {"status": "SUCCESS", "symbol": symbol, "entry_price": avg_price, "quantity": total_quantity}
         else:
             logger.info("MODO DE TESTE. Executando create_test_order.")
@@ -84,7 +95,7 @@ def place_buy_order(client, symbol: str, quote_order_qty: float):
                 quantity=formatted_quantity
             )
             logger.info(f"Ordem de compra de TESTE para {symbol} foi bem-sucedida (simulação).")
-            trades_logger.info(f"BUY,{symbol},{entry_price},{formatted_quantity}")
+            trades_logger.info(f"BUY,{symbol},{entry_price:.{price_precision}f},{formatted_quantity}")
             # Retorna os dados como se a ordem tivesse sido executada pelo preço do order book
             return {"status": "TEST_SUCCESS", "symbol": symbol, "entry_price": entry_price, "quantity": formatted_quantity}
 
