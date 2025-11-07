@@ -13,48 +13,46 @@ import order_manager
 from logger_setup import logger, trades_logger
 
 def _handle_full_sell(client, trade: dict, reason: str, pnl: float):
-    """Vende 100% da posição restante e a remove da memória."""
+    """
+    Tenta vender 100% de uma posição.
+    Retorna True se a ordem de venda foi bem-sucedida, False caso contrário.
+    A remoção do trade da lista de ativos é gerenciada pelo chamador.
+    """
     symbol = trade['symbol']
     quantity = trade['quantity']
 
-    # Calcula o PnL em USDT para a porção restante da posição
     proporcao_restante = quantity / trade['initial_quantity']
     pnl_usdt = (pnl / 100) * (config.VALOR_OPERACAO_USDT * proporcao_restante)
 
     logger.info(f"ORDEM DE VENDA TOTAL para {symbol}. Motivo: {reason}. PnL: {pnl:.2f}% ({pnl_usdt:+.2f} USDT).")
-
-    # Log completo da venda final
     trades_logger.info(f"CLOSE,{symbol},{reason},{pnl:.2f}%,{pnl_usdt:+.2f} USDT,{quantity}")
 
     if order_manager.place_sell_order(client, symbol, quantity):
-        state_manager.remover_trade(symbol)
-        logger.info(f"Trade para {symbol} fechado e removido da memória.")
+        logger.info(f"Ordem de venda total para {symbol} executada com sucesso.")
         return True
     else:
-        logger.error(f"FALHA ao vender {symbol}. O trade permanecerá ativo.")
+        logger.error(f"FALHA ao vender {symbol}. O trade permanecerá ativo para nova tentativa.")
         return False
 
 def _handle_partial_sell(client, trade: dict, pnl: float):
-    """Executa uma venda parcial baseada nos alvos de Take Profit."""
+    """
+    Executa uma venda parcial.
+    Modifica o objeto trade na memória com a nova quantidade e o próximo alvo.
+    Retorna o objeto trade modificado e um booleano indicando se a posição foi totalmente fechada.
+    """
     symbol = trade['symbol']
     target_index = trade.get('next_target_index', 0)
 
-    # Calcula a quantidade a ser vendida com base na QUANTIDADE RESTANTE
     sell_percentage = config.TAKE_PROFIT_AMOUNTS[target_index]
     quantity_to_sell = trade['quantity'] * (sell_percentage / 100.0)
 
-    # Ajuste para o último alvo, garantindo que vende tudo o que sobrou
     if sell_percentage == 100:
         quantity_to_sell = trade['quantity']
 
-    # Calcula o PnL em USDT para a porção que está sendo vendida
-    # (baseado no valor total investido, proporcional à quantidade vendida)
     proporcao_vendida_do_total = quantity_to_sell / trade['initial_quantity']
     pnl_usdt = (pnl / 100) * (config.VALOR_OPERACAO_USDT * proporcao_vendida_do_total)
 
     logger.info(f"ORDEM DE VENDA PARCIAL para {symbol} (Alvo #{target_index + 1}). PnL: {pnl:.2f}% ({pnl_usdt:+.2f} USDT). Vendendo {quantity_to_sell} unidades.")
-
-    # Log completo da venda parcial
     trades_logger.info(f"PARTIAL_SELL,{symbol},TAKE_PROFIT_TARGET_{target_index + 1},{pnl:.2f}%,{pnl_usdt:+.2f} USDT,{quantity_to_sell}")
 
     if order_manager.place_sell_order(client, symbol, quantity_to_sell):
@@ -62,25 +60,22 @@ def _handle_partial_sell(client, trade: dict, pnl: float):
         trade['next_target_index'] += 1
         logger.info(f"Venda parcial para {symbol} bem-sucedida. Quantidade restante: {trade['quantity']}.")
 
-        if trade['quantity'] < 1e-9 or sell_percentage == 100:
-            state_manager.remover_trade(symbol)
-            logger.info(f"Trade para {symbol} concluído após a venda final.")
-        else:
-            # Salva o estado atualizado do trade imediatamente após a venda parcial
-            trades = state_manager.ler_trades_ativos()
-            for i, t in enumerate(trades):
-                if t['symbol'] == symbol:
-                    trades[i] = trade
-                    break
-            state_manager.escrever_trades_ativos(trades)
-        return True
+        is_trade_closed = trade['quantity'] < 1e-9 or sell_percentage == 100
+        if is_trade_closed:
+             logger.info(f"Trade para {symbol} concluído após a venda final do take profit.")
+
+        return trade, is_trade_closed
     else:
         logger.error(f"FALHA na venda parcial para {symbol}. O alvo não será atualizado.")
-        return False
+        return trade, False
 
 def check_active_positions(client, active_trades: list):
-    """Verifica as posições ativas e executa a lógica de venda."""
-    if not active_trades: return
+    """
+    Verifica as posições ativas, executa a lógica de venda e, ao final,
+    salva o estado atualizado de todos os trades de uma só vez.
+    """
+    if not active_trades:
+        return
 
     logger.info(f"Iniciando verificação de {len(active_trades)} posições ativas...")
     try:
@@ -89,18 +84,23 @@ def check_active_positions(client, active_trades: list):
         logger.error(f"Não foi possível obter os preços dos tickers: {e}")
         return
 
-    trades_to_update = []
+    final_active_trades = []
+
     for trade in active_trades:
         symbol = trade.get('symbol')
-        if not symbol or symbol not in tickers: continue
+        if not symbol or symbol not in tickers:
+            final_active_trades.append(trade)
+            continue
 
         current_price = tickers[symbol]
         entry_price = trade.get('entry_price', 0)
-        if entry_price == 0: continue
+        if entry_price == 0:
+            final_active_trades.append(trade)
+            continue
 
+        is_trade_still_active = True
         pnl = ((current_price - entry_price) / entry_price) * 100
 
-        # Log de status para cada ativo
         trailing_stop_price = trade.get('trailing_stop_price')
         trailing_stop_status = f"{trailing_stop_price:.8f}" if trailing_stop_price else "(inativo)"
         logger.info(
@@ -112,36 +112,33 @@ def check_active_positions(client, active_trades: list):
         # --- 1. Stop Loss Fixo ---
         stop_loss_price = entry_price * (1 - config.STOP_LOSS_PERCENT / 100)
         if current_price <= stop_loss_price:
-            _handle_full_sell(client, trade, "STOP LOSS", pnl)
-            continue
+            if _handle_full_sell(client, trade, "STOP LOSS", pnl):
+                is_trade_still_active = False
 
         # --- 2. Trailing Stop Loss ---
-        activation_price = entry_price * (1 + config.TRAILING_STOP_PERCENT / 100)
-        if current_price > activation_price:
-            new_stop = current_price * (1 - config.TRAILING_STOP_PERCENT / 100)
-            if new_stop > trade.get('trailing_stop_price', 0):
-                trade['trailing_stop_price'] = new_stop
+        if is_trade_still_active:
+            activation_price = entry_price * (1 + config.TRAILING_STOP_PERCENT / 100)
+            if current_price > activation_price:
+                new_stop = current_price * (1 - config.TRAILING_STOP_PERCENT / 100)
+                if new_stop > trade.get('trailing_stop_price', 0):
+                    trade['trailing_stop_price'] = new_stop
 
-        if 'trailing_stop_price' in trade and current_price <= trade['trailing_stop_price']:
-            _handle_full_sell(client, trade, "TRAILING STOP", pnl)
-            continue
+            if 'trailing_stop_price' in trade and current_price <= trade['trailing_stop_price']:
+                if _handle_full_sell(client, trade, "TRAILING STOP", pnl):
+                    is_trade_still_active = False
 
         # --- 3. Take Profit Parcial ---
-        target_index = trade.get('next_target_index', 0)
-        if target_index < len(config.TAKE_PROFIT_TARGETS):
-            target_profit = config.TAKE_PROFIT_TARGETS[target_index]
-            if pnl >= target_profit:
-                _handle_partial_sell(client, trade, pnl)
+        if is_trade_still_active:
+            target_index = trade.get('next_target_index', 0)
+            if target_index < len(config.TAKE_PROFIT_TARGETS):
+                target_profit = config.TAKE_PROFIT_TARGETS[target_index]
+                if pnl >= target_profit:
+                    trade, is_trade_closed = _handle_partial_sell(client, trade, pnl)
+                    if is_trade_closed:
+                        is_trade_still_active = False
 
-        trades_to_update.append(trade)
+        if is_trade_still_active:
+            final_active_trades.append(trade)
 
-    # A lógica de salvar o estado agora é tratada dentro das funções de venda para maior robustez.
-    # Apenas o `trailing_stop_price` atualizado precisa ser salvo no final do ciclo.
-    current_trades = state_manager.ler_trades_ativos()
-    for trade in current_trades:
-        for updated_trade in trades_to_update:
-            if trade['symbol'] == updated_trade['symbol'] and 'trailing_stop_price' in updated_trade:
-                trade['trailing_stop_price'] = updated_trade['trailing_stop_price']
-
-    state_manager.escrever_trades_ativos(current_trades)
-    logger.info("Verificação de posições ativas concluída.")
+    state_manager.escrever_trades_ativos(final_active_trades)
+    logger.info("Verificação de posições ativas concluída. Estado final salvo.")
