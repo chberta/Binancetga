@@ -15,6 +15,14 @@ def conectar_binance():
     """Cria e retorna um cliente da API da Binance."""
     try:
         client = Client(config.API_KEY, config.API_SECRET)
+
+        # Sincronizar o tempo com o servidor da Binance para evitar erros de timestamp
+        server_time = client.get_server_time()
+        local_time = int(time.time() * 1000)
+        time_offset = server_time['serverTime'] - local_time
+        client.timestamp_offset = time_offset
+        logger.info(f"Sincronização de tempo com a Binance concluída. Offset: {time_offset} ms.")
+
         status = client.get_system_status()
         if status['status'] == 0:
             logger.info("Conexão com a Binance bem-sucedida!")
