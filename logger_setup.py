@@ -38,7 +38,9 @@ def setup_loggers():
             logger.error(f"Não foi possível configurar o log em arquivo principal: {e}")
 
     # --- Configuração do Logger de Trades ---
-    trade_log_format = logging.Formatter('%(asctime)s,%(message)s')
+    # O formato agora é apenas a mensagem, pois a formatação completa (incluindo timestamp)
+    # será feita diretamente nos módulos que geram o log.
+    trade_log_format = logging.Formatter('%(message)s')
     trades_logger = logging.getLogger('trades_logger')
     trades_logger.setLevel(logging.INFO) # O log de trades sempre registrará as informações
     trades_logger.propagate = False # Evita que o log de trades vá para o logger principal

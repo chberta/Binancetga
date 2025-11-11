@@ -12,6 +12,8 @@ import state_manager
 import order_manager
 from logger_setup import logger, trades_logger
 
+from datetime import datetime
+
 def _handle_full_sell(client, trade: dict, reason: str, pnl: float):
     """
     Tenta vender 100% de uma posição.
@@ -25,10 +27,16 @@ def _handle_full_sell(client, trade: dict, reason: str, pnl: float):
     pnl_usdt = (pnl / 100) * (config.VALOR_OPERACAO_USDT * proporcao_restante)
 
     logger.info(f"ORDEM DE VENDA TOTAL para {symbol}. Motivo: {reason}. PnL: {pnl:.2f}% ({pnl_usdt:+.2f} USDT).")
-    trades_logger.info(f"CLOSE,{symbol},{reason},{pnl:.2f}%,{pnl_usdt:+.2f} USDT,{quantity}")
+
+    # Novo formato de log
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    log_msg = (f"[{timestamp}] SELL (Close) | Symbol: {symbol} | Reason: {reason} | "
+               f"PnL: {pnl:+.2f}% ({pnl_usdt:+.2f} USDT) | Qty Sold: {quantity}")
+    trades_logger.info(log_msg)
 
     if order_manager.place_sell_order(client, symbol, quantity):
         logger.info(f"Ordem de venda total para {symbol} executada com sucesso.")
+        state_manager.adicionar_ativo_em_cooldown(symbol) # Adiciona ao cooldown
         return True
     else:
         logger.error(f"FALHA ao vender {symbol}. O trade permanecerá ativo para nova tentativa.")
@@ -53,7 +61,13 @@ def _handle_partial_sell(client, trade: dict, pnl: float):
     pnl_usdt = (pnl / 100) * (config.VALOR_OPERACAO_USDT * proporcao_vendida_do_total)
 
     logger.info(f"ORDEM DE VENDA PARCIAL para {symbol} (Alvo #{target_index + 1}). PnL: {pnl:.2f}% ({pnl_usdt:+.2f} USDT). Vendendo {quantity_to_sell} unidades.")
-    trades_logger.info(f"PARTIAL_SELL,{symbol},TAKE_PROFIT_TARGET_{target_index + 1},{pnl:.2f}%,{pnl_usdt:+.2f} USDT,{quantity_to_sell}")
+
+    # Novo formato de log
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    reason = f"Take Profit #{target_index + 1}"
+    log_msg = (f"[{timestamp}] SELL (Partial) | Symbol: {symbol} | Reason: {reason} | "
+               f"PnL: {pnl:+.2f}% ({pnl_usdt:+.2f} USDT) | Qty Sold: {quantity_to_sell}")
+    trades_logger.info(log_msg)
 
     if order_manager.place_sell_order(client, symbol, quantity_to_sell):
         trade['quantity'] -= quantity_to_sell
@@ -63,6 +77,7 @@ def _handle_partial_sell(client, trade: dict, pnl: float):
         is_trade_closed = trade['quantity'] < 1e-9 or sell_percentage == 100
         if is_trade_closed:
              logger.info(f"Trade para {symbol} concluído após a venda final do take profit.")
+             state_manager.adicionar_ativo_em_cooldown(symbol) # Adiciona ao cooldown
 
         return trade, is_trade_closed
     else:

@@ -83,8 +83,19 @@ def place_buy_order(client, symbol: str, quote_order_qty: float):
 
             avg_price = sum(float(fill['price']) * float(fill['qty']) for fill in fills) / float(order['executedQty'])
             total_quantity = float(order['executedQty'])
-            logger.info(f"Ordem de compra REAL para {symbol} executada. Preço médio: {avg_price}, Quantidade: {total_quantity}")
-            trades_logger.info(f"BUY,{symbol},{avg_price:.{price_precision}f},{total_quantity}")
+            cost = avg_price * total_quantity
+
+            logger.info(f"Ordem de compra REAL para {symbol} executada. Preço médio: {avg_price}, Quantidade: {total_quantity}, Custo: {cost:.2f} USDT")
+
+            # Novo formato de log
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            log_msg = (f"[{timestamp}] BUY | Symbol: {symbol} | "
+                       f"Price: {avg_price:.{price_precision}f} | "
+                       f"Quantity: {total_quantity} | "
+                       f"Cost: {cost:.2f} USDT")
+            trades_logger.info(log_msg)
+
             return {"status": "SUCCESS", "symbol": symbol, "entry_price": avg_price, "quantity": total_quantity}
         else:
             logger.info("MODO DE TESTE. Executando create_test_order.")
@@ -95,8 +106,17 @@ def place_buy_order(client, symbol: str, quote_order_qty: float):
                 quantity=formatted_quantity
             )
             logger.info(f"Ordem de compra de TESTE para {symbol} foi bem-sucedida (simulação).")
-            trades_logger.info(f"BUY,{symbol},{entry_price:.{price_precision}f},{formatted_quantity}")
-            # Retorna os dados como se a ordem tivesse sido executada pelo preço do order book
+
+            # Novo formato de log para teste
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            cost = entry_price * formatted_quantity
+            log_msg = (f"[{timestamp}] BUY (Test) | Symbol: {symbol} | "
+                       f"Price: {entry_price:.{price_precision}f} | "
+                       f"Quantity: {formatted_quantity} | "
+                       f"Cost: {cost:.2f} USDT")
+            trades_logger.info(log_msg)
+
             return {"status": "TEST_SUCCESS", "symbol": symbol, "entry_price": entry_price, "quantity": formatted_quantity}
 
     except BinanceAPIException as e:
