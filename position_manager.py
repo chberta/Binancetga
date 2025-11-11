@@ -36,7 +36,7 @@ def _handle_full_sell(client, trade: dict, reason: str, pnl: float):
 
     if order_manager.place_sell_order(client, symbol, quantity):
         logger.info(f"Ordem de venda total para {symbol} executada com sucesso.")
-        state_manager.adicionar_ativo_em_cooldown(symbol) # Adiciona ao cooldown
+        state_manager.adicionar_ativo_cooldown(symbol) # Adiciona ao cooldown
         return True
     else:
         logger.error(f"FALHA ao vender {symbol}. O trade permanecerá ativo para nova tentativa.")
@@ -77,7 +77,7 @@ def _handle_partial_sell(client, trade: dict, pnl: float):
         is_trade_closed = trade['quantity'] < 1e-9 or sell_percentage == 100
         if is_trade_closed:
              logger.info(f"Trade para {symbol} concluído após a venda final do take profit.")
-             state_manager.adicionar_ativo_em_cooldown(symbol) # Adiciona ao cooldown
+             state_manager.adicionar_ativo_cooldown(symbol) # Adiciona ao cooldown
 
         return trade, is_trade_closed
     else:
