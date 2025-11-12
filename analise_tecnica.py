@@ -35,27 +35,33 @@ def get_chilo_signal_status(client: Client, symbol: str) -> tuple[str, int]:
         if chilo_state_signals is None or chilo_state_signals.empty or len(chilo_state_signals) < 2:
             return SEM_SINAL, 0
 
-        # Analisa a última vela fechada (índice -2)
-        ultima_vela_idx = -2
+        # A vela que nos interessa é a última fechada (penúltima da lista)
+        ultima_vela_fechada_idx = -2
 
-        # Se a última vela fechada não está em estado de compra, não há sinal.
-        if not chilo_state_signals.iloc[ultima_vela_idx]:
+        # Se a última vela fechada não está em estado de compra, não há sinal ativo.
+        if not chilo_state_signals.iloc[ultima_vela_fechada_idx]:
             return SEM_SINAL, 0
 
-        # Se está em estado de compra, calcula há quantas velas começou.
-        idade_sinal = 0
-        # Itera de trás para frente a partir da última vela fechada
-        for i in range(len(chilo_state_signals) + ultima_vela_idx, -1, -1):
-            if chilo_state_signals.iloc[i]:
-                # Se o sinal de cruzamento aconteceu neste candle, a idade é a contagem.
-                if chilo_cross_signals.iloc[i]:
-                    idade_sinal += 1
-                    break
-                else:
-                    idade_sinal += 1
-            else:
-                # Chegou ao fim da tendência de compra
-                break
+        # --- Lógica de Cruzamento: Identificar a "vela de ignição" do sinal ---
+        # Um cruzamento ocorre onde o sinal era Falso e na vela seguinte se torna Verdadeiro.
+        sinal_anterior = chilo_state_signals.shift(1)
+        cruzamento_para_compra = (chilo_state_signals == True) & (sinal_anterior == False)
+
+        # Encontra os índices onde ocorreram os cruzamentos
+        indices_cruzamento = cruzamento_para_compra[cruzamento_para_compra].index
+
+        # Se não houve nenhum cruzamento (ex: a série já começa com True), não consideramos um sinal válido.
+        if indices_cruzamento.empty:
+            return SEM_SINAL, 0
+
+        # Pega o índice do cruzamento mais recente
+        ultimo_cruzamento_idx = indices_cruzamento[-1]
+
+        # Calcula a idade do sinal
+        # A idade é a distância entre a vela atual (última fechada) e a vela onde o sinal começou.
+        # Idade 0 = sinal na última vela fechada. Idade 1 = sinal na penúltima, e assim por diante.
+        indice_df_ultima_vela = len(chilo_state_signals) + ultima_vela_fechada_idx
+        idade_sinal = indice_df_ultima_vela - ultimo_cruzamento_idx
 
         return SINAL_COMPRA, idade_sinal
 
