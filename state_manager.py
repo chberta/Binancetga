@@ -16,6 +16,7 @@ import config
 # Define os caminhos para os arquivos de estado
 TRADES_FILE_PATH = "data/trades_ativos.json"
 COOLDOWN_FILE_PATH = "data/cooldown_assets.json"
+HISTORICO_SYMBOLS_PATH = "data/historico_symbols.json"
 
 def _garantir_diretorio():
     """Garante que o diretório 'data/' exista."""
@@ -103,3 +104,32 @@ def obter_ativos_em_cooldown() -> list[str]:
         escrever_cooldown(cooldown_limpo)
 
     return ativos_em_cooldown
+
+# --- Funções de Histórico de Símbolos ---
+
+def registrar_symbol_no_historico(symbol: str):
+    """
+    Registra um símbolo no arquivo de histórico de símbolos, se ainda não estiver presente.
+    A lista é mantida em ordem alfabética.
+    """
+    _garantir_diretorio()
+
+    # 1. Ler a lista existente
+    historico = []
+    if os.path.exists(HISTORICO_SYMBOLS_PATH):
+        try:
+            with open(HISTORICO_SYMBOLS_PATH, 'r', encoding='utf-8') as f:
+                historico = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass # Se o arquivo estiver corrompido ou vazio, começamos do zero
+
+    # 2. Adicionar o novo símbolo se ele não estiver na lista
+    if symbol not in historico:
+        historico.append(symbol)
+        historico.sort() # Mantém a lista ordenada
+
+        # 3. Escrever a lista atualizada de volta no arquivo
+        with open(HISTORICO_SYMBOLS_PATH, 'w', encoding='utf-8') as f:
+            json.dump(historico, f, indent=4)
+
+        logger.info(f"Símbolo {symbol} adicionado ao histórico de símbolos operados.")

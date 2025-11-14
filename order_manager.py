@@ -12,6 +12,7 @@ from binance.client import Client
 from binance.exceptions import BinanceAPIException
 from logger_setup import logger, trades_logger
 import math
+import state_manager
 
 def _get_lot_size_precision(symbol_info: dict) -> tuple[float, int]:
     """Extrai o stepSize e a precisão do filtro LOT_SIZE."""
@@ -96,6 +97,9 @@ def place_buy_order(client, symbol: str, quote_order_qty: float):
                        f"Cost: {cost:.2f} USDT")
             trades_logger.info(log_msg)
 
+            # Registrar o símbolo no histórico de operações
+            state_manager.registrar_symbol_no_historico(symbol)
+
             return {"status": "SUCCESS", "symbol": symbol, "entry_price": avg_price, "quantity": total_quantity}
         else:
             logger.info("MODO DE TESTE. Executando create_test_order.")
@@ -116,6 +120,9 @@ def place_buy_order(client, symbol: str, quote_order_qty: float):
                        f"Quantity: {formatted_quantity} | "
                        f"Cost: {cost:.2f} USDT")
             trades_logger.info(log_msg)
+
+            # Registrar o símbolo no histórico de operações
+            state_manager.registrar_symbol_no_historico(symbol)
 
             return {"status": "TEST_SUCCESS", "symbol": symbol, "entry_price": entry_price, "quantity": formatted_quantity}
 
