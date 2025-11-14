@@ -6,6 +6,7 @@ Módulo de Análise Técnica
 
 import config
 import pandas as pd
+import ta
 import estrategia_chilo
 from binance.client import Client
 
@@ -30,40 +31,41 @@ def get_chilo_signal_status(client: Client, symbol: str) -> tuple[str, int]:
         for col in ['open', 'high', 'low', 'close', 'volume']:
             df[col] = pd.to_numeric(df[col])
 
-        chilo_cross_signals, chilo_state_signals = estrategia_chilo.getChiloStrategy(df)
+        buy_cross, sell_cross, buy_state = estrategia_chilo.getChiloStrategy(df)
 
-        if chilo_state_signals is None or chilo_state_signals.empty or len(chilo_state_signals) < 2:
+        if buy_cross is None or sell_cross is None or len(buy_cross) < 2:
             return SEM_SINAL, 0
 
-        # A vela que nos interessa é a última fechada (penúltima da lista)
+        # --- Lógica de Dupla Verificação ---
+        # 1. Encontrar os índices dos últimos sinais de compra e venda
+        indices_compra = buy_cross[buy_cross].index
+        indices_venda = sell_cross[sell_cross].index
+
+        # Se não houver nenhum sinal de compra, não há oportunidade
+        if indices_compra.empty:
+            return SEM_SINAL, 0
+
+        ultimo_sinal_compra_idx = indices_compra[-1]
+
+        # 2. Verificar se há um sinal de venda que invalida o sinal de compra
+        if not indices_venda.empty:
+            ultimo_sinal_venda_idx = indices_venda[-1]
+            # Se o último sinal de venda for mais recente que o último de compra, a oportunidade é inválida
+            if ultimo_sinal_venda_idx > ultimo_sinal_compra_idx:
+                return SEM_SINAL, 0
+
+        # 3. Se a verificação do Chilo passar, adicionar o filtro de RSI como confirmação
+        rsi = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
         ultima_vela_fechada_idx = -2
 
-        # Se a última vela fechada não está em estado de compra, não há sinal ativo.
-        if not chilo_state_signals.iloc[ultima_vela_fechada_idx]:
-            return SEM_SINAL, 0
+        # Se o RSI da última vela fechada for > 50, o sinal é forte.
+        if rsi.iloc[ultima_vela_fechada_idx] > 50:
+            # A idade é a distância da última vela fechada para a vela do sinal de compra
+            idade_sinal = (len(df) - 2) - ultimo_sinal_compra_idx
+            return SINAL_COMPRA, idade_sinal
 
-        # --- Lógica de Cruzamento: Identificar a "vela de ignição" do sinal ---
-        # Um cruzamento ocorre onde o sinal era Falso e na vela seguinte se torna Verdadeiro.
-        sinal_anterior = chilo_state_signals.shift(1)
-        cruzamento_para_compra = (chilo_state_signals == True) & (sinal_anterior == False)
-
-        # Encontra os índices onde ocorreram os cruzamentos
-        indices_cruzamento = cruzamento_para_compra[cruzamento_para_compra].index
-
-        # Se não houve nenhum cruzamento (ex: a série já começa com True), não consideramos um sinal válido.
-        if indices_cruzamento.empty:
-            return SEM_SINAL, 0
-
-        # Pega o índice do cruzamento mais recente
-        ultimo_cruzamento_idx = indices_cruzamento[-1]
-
-        # Calcula a idade do sinal
-        # A idade é a distância entre a vela atual (última fechada) e a vela onde o sinal começou.
-        # Idade 0 = sinal na última vela fechada. Idade 1 = sinal na penúltima, e assim por diante.
-        indice_df_ultima_vela = len(chilo_state_signals) + ultima_vela_fechada_idx
-        idade_sinal = indice_df_ultima_vela - ultimo_cruzamento_idx
-
-        return SINAL_COMPRA, idade_sinal
+        # Se o RSI for menor ou igual a 50, o sinal é fraco e será ignorado.
+        return SEM_SINAL, 0
 
     except Exception:
         return SEM_SINAL, 0
