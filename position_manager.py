@@ -14,7 +14,7 @@ from logger_setup import logger, trades_logger
 
 from datetime import datetime
 
-def _handle_full_sell(client, trade: dict, reason: str, pnl: float):
+def _handle_full_sell(client, trade: dict, reason: str, pnl: float, current_price: float):
     """
     Tenta vender 100% de uma posição.
     Retorna True se a ordem de venda foi bem-sucedida, False caso contrário.
@@ -30,7 +30,7 @@ def _handle_full_sell(client, trade: dict, reason: str, pnl: float):
 
     # Novo formato de log
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    log_msg = (f"[{timestamp}] SELL (Close) | Symbol: {symbol} | Reason: {reason} | "
+    log_msg = (f"[{timestamp}] SELL (Close) | Symbol: {symbol} | Price: {current_price} | Reason: {reason} | "
                f"PnL: {pnl:+.2f}% ({pnl_usdt:+.2f} USDT) | Qty Sold: {quantity}")
     trades_logger.info(log_msg)
 
@@ -42,7 +42,7 @@ def _handle_full_sell(client, trade: dict, reason: str, pnl: float):
         logger.error(f"FALHA ao vender {symbol}. O trade permanecerá ativo para nova tentativa.")
         return False
 
-def _handle_partial_sell(client, trade: dict, pnl: float):
+def _handle_partial_sell(client, trade: dict, pnl: float, current_price: float):
     """
     Executa uma venda parcial.
     Modifica o objeto trade na memória com a nova quantidade e o próximo alvo.
@@ -65,7 +65,7 @@ def _handle_partial_sell(client, trade: dict, pnl: float):
     # Novo formato de log
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     reason = f"Take Profit #{target_index + 1}"
-    log_msg = (f"[{timestamp}] SELL (Partial) | Symbol: {symbol} | Reason: {reason} | "
+    log_msg = (f"[{timestamp}] SELL (Partial) | Symbol: {symbol} | Price: {current_price} | Reason: {reason} | "
                f"PnL: {pnl:+.2f}% ({pnl_usdt:+.2f} USDT) | Qty Sold: {quantity_to_sell}")
     trades_logger.info(log_msg)
 
@@ -127,7 +127,7 @@ def check_active_positions(client, active_trades: list):
         # --- 1. Stop Loss Fixo ---
         stop_loss_price = entry_price * (1 - config.STOP_LOSS_PERCENT / 100)
         if current_price <= stop_loss_price:
-            if _handle_full_sell(client, trade, "STOP LOSS", pnl):
+            if _handle_full_sell(client, trade, "STOP LOSS", pnl, current_price):
                 is_trade_still_active = False
 
         # --- 2. Trailing Stop Loss ---
@@ -139,7 +139,7 @@ def check_active_positions(client, active_trades: list):
                     trade['trailing_stop_price'] = new_stop
 
             if 'trailing_stop_price' in trade and current_price <= trade['trailing_stop_price']:
-                if _handle_full_sell(client, trade, "TRAILING STOP", pnl):
+                if _handle_full_sell(client, trade, "TRAILING STOP", pnl, current_price):
                     is_trade_still_active = False
 
         # --- 3. Take Profit Parcial ---
@@ -148,7 +148,7 @@ def check_active_positions(client, active_trades: list):
             if target_index < len(config.TAKE_PROFIT_TARGETS):
                 target_profit = config.TAKE_PROFIT_TARGETS[target_index]
                 if pnl >= target_profit:
-                    trade, is_trade_closed = _handle_partial_sell(client, trade, pnl)
+                    trade, is_trade_closed = _handle_partial_sell(client, trade, pnl, current_price)
                     if is_trade_closed:
                         is_trade_still_active = False
 
